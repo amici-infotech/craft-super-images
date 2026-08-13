@@ -30,17 +30,19 @@ Twig renders signed runtime URL
         ↓
 Browser requests runtime endpoint
         ↓
-Validate signature + expiry + limits
+Validate signature + expiry + limits + source allow-lists
         ↓
 Build GenerationRequest / ManifestUnit
         ↓
 Acquire lock for identity
         ↓
-exists()? yes → redirect/serve final URL
+marker/exists? yes → redirect/serve final URL
         ↓
 generate via GenerationService
         ↓
 store via StorageAdapter
+        ↓
+write private existence marker under storage/ (for remote/CDN)
         ↓
 release lock
         ↓
@@ -84,6 +86,8 @@ Never accept an unsigned arbitrary transform API in production.
 Allow:
 
 - known Asset IDs;
+- local paths inside configured allow-listed roots;
+- remote/CDN URLs whose hosts are allow-listed and SSRF-safe;
 - known profiles/variants;
 - allow-listed formats;
 - allow-listed operations/options within resource limits;
@@ -91,8 +95,9 @@ Allow:
 
 Deny:
 
-- arbitrary filesystem paths;
-- arbitrary remote URLs as sources;
+- arbitrary filesystem paths outside allow-listed roots;
+- arbitrary remote URLs / hosts outside allow-lists;
+- private-network targets after DNS resolution;
 - unrestricted width/height;
 - unrestricted operation lists;
 - user-supplied shell arguments;
@@ -195,6 +200,7 @@ Twig may output:
 Twig must not:
 
 - call exists();
+- read existence markers;
 - generate images;
 - encode images;
 - talk to S3 SDKs.

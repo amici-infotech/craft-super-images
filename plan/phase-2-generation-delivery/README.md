@@ -142,12 +142,15 @@ Phase 2 supports both.
 Derivatives are generated before browser request:
 
 ```text
-Asset save / CLI / queue
+Asset upload/replace → automatic queue
+  and/or CLI generate
       ↓
-generate now
+queue workers / CLI
       ↓
 storage/CDN URL ready
 ```
+
+Automatic queue generation on Asset upload/replace is required product behavior when configured.
 
 ## Lazy
 
@@ -215,9 +218,14 @@ Phase 2 must enforce:
 - max width/height/pixels
 - max input size
 - complexity limits
-- no arbitrary filesystem paths
+- local-path sources only inside configured allow-listed roots
+- remote/CDN URL sources only for configured allow-listed hosts (SSRF-safe)
+- no arbitrary filesystem paths from user input
 - no arbitrary remote URL fetching from user input
 - no unsafe shell composition
+- existence markers only under private Craft `storage/`, never webroot
+
+See `../security.md`.
 
 ---
 
@@ -272,6 +280,7 @@ If a Phase 1 service is missing, stop and complete Phase 1 rather than inventing
 - asset/volume/profile filters
 - queue jobs
 - batching
+- automatic enqueue on Asset upload/replace
 - status basics needed for generation
 
 ## Milestone 3 — Runtime
@@ -306,11 +315,13 @@ Phase 2 is complete when:
 - [ ] Manifest can expand a profile into derivative units
 - [ ] CLI can generate and dry-run
 - [ ] Queue can generate in batches
+- [ ] Automatic queue generation runs on Asset upload/replace
 - [ ] Runtime signed generation works safely
+- [ ] Local-path and allow-listed remote URL sources work end-to-end
 - [ ] Concurrency lock prevents duplicate generation
-- [ ] Twig URL/img/picture APIs work
+- [ ] Twig URL/img/picture APIs work for Assets and non-Asset sources
 - [ ] Responsive srcset/picture output works
-- [ ] Normal Twig render does no processing/existence I/O
+- [ ] Normal Twig render does no processing/existence/marker I/O
 - [ ] Eager and lazy modes share GenerationService
 - [ ] Tests cover manifest, CLI/queue, runtime security, Twig output
 

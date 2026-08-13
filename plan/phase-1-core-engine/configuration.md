@@ -54,12 +54,109 @@ config/super-images.php
 
 This is intended for version-controlled configuration, deployments, CI/CD, advanced developers, and repeatable environments.
 
-Example:
+Example of a rich config surface (illustrative, not exhaustive):
 
 ```php
 <?php
 
+use craft\helpers\App;
+
 return [
+    // Feature toggles / plugin settings
+    'enabled' => true,
+    'defaultProfile' => 'responsive',
+    'defaultFormat' => 'webp',
+    'driver' => 'auto', // auto|libvips|imagick|gd
+
+    // Automatic queue generation when Assets are uploaded/replaced
+    'autoGenerate' => [
+        'enabled' => true,
+        'onUpload' => true,
+        'onReplace' => true,
+        'onFocalPointChange' => true,
+        'queue' => true, // always queue; never block upload request
+        'disableDuringImport' => true,
+    ],
+
+    // Non-Asset sources
+    'sources' => [
+        'local' => [
+            'enabled' => true,
+            'allowedRoots' => [
+                '@webroot/images',
+                '@webroot/uploads',
+            ],
+        ],
+        'remote' => [
+            'enabled' => true,
+            'allowedHosts' => [
+                'cdn.example.com',
+            ],
+            'timeout' => 10,
+            'maxBytes' => 25_000_000,
+            'maxRedirects' => 3,
+        ],
+    ],
+
+    // Runtime / security limits
+    'runtime' => [
+        'enabled' => true,
+        'signingSecret' => App::env('SUPER_IMAGES_SIGNING_SECRET'),
+        'urlTtl' => 3600,
+        'maxWidth' => 4096,
+        'maxHeight' => 4096,
+        'maxPixels' => 20_000_000,
+    ],
+
+    // Storage + delivery
+    'storage' => [
+        'default' => App::env('SUPER_IMAGES_STORAGE') ?: 'local',
+        'markers' => [
+            'enabled' => true,
+            'path' => '@storage/super-images/markers',
+        ],
+        'adapters' => [
+            'local' => [
+                'type' => 'local',
+                'path' => '@webroot/super-images',
+                'baseUrl' => '@web/super-images',
+            ],
+            's3' => [
+                'type' => 's3',
+                'keyId' => App::env('SUPER_IMAGES_S3_KEY_ID'),
+                'secret' => App::env('SUPER_IMAGES_S3_SECRET'),
+                'bucket' => App::env('SUPER_IMAGES_S3_BUCKET'),
+                'region' => App::env('SUPER_IMAGES_S3_REGION'),
+                'endpoint' => App::env('SUPER_IMAGES_S3_ENDPOINT'),
+                'prefix' => 'derivatives/',
+                'baseUrl' => App::env('SUPER_IMAGES_CDN_URL'),
+            ],
+            'spaces' => [
+                'type' => 's3',
+                'keyId' => App::env('SUPER_IMAGES_SPACES_KEY'),
+                'secret' => App::env('SUPER_IMAGES_SPACES_SECRET'),
+                'bucket' => App::env('SUPER_IMAGES_SPACES_BUCKET'),
+                'region' => App::env('SUPER_IMAGES_SPACES_REGION'),
+                'endpoint' => App::env('SUPER_IMAGES_SPACES_ENDPOINT'),
+                'baseUrl' => App::env('SUPER_IMAGES_SPACES_CDN_URL'),
+            ],
+        ],
+    ],
+
+    // Encoder / optimizer preferences
+    'encoders' => [
+        'jpeg' => ['quality' => 82],
+        'webp' => ['quality' => 80],
+        'avif' => ['quality' => 65],
+    ],
+    'optimizers' => [
+        'enabled' => true,
+        'jpeg' => 'jpegoptim',
+        'png' => 'oxipng',
+        'webp' => null,
+        'avif' => null,
+    ],
+
     'profiles' => [
         'responsive' => [
             'formats' => ['jpg', 'webp', 'avif'],
@@ -81,12 +178,27 @@ return [
     'volumes' => [
         'images' => [
             'profile' => 'responsive',
+            'autoGenerate' => true,
+            'storage' => 's3',
         ],
+    ],
+
+    'fields' => [
+        'heroImage' => [
+            'profiles' => ['responsive'],
+        ],
+    ],
+
+    'cleanup' => [
+        'previewRetentionDays' => 2,
+        'obsoleteRetentionDays' => 30,
     ],
 ];
 ```
 
-The exact final schema can be refined during implementation, but PHP configuration is a first-class configuration source, not a secondary feature.
+The config file will grow. That is expected.
+
+The exact final schema can be refined during implementation, but PHP configuration is a first-class configuration source for plugin settings, storage credentials (via env), paths/URLs, source allow-lists, auto-generation, and processing defaults — not a secondary feature.
 
 ### 2.2 Control Panel Configuration
 
@@ -772,10 +884,11 @@ Runtime overrides must:
 
 ## 28. Configuration Security
 
-Never allow runtime configuration to select:
+Never allow runtime request input to select:
 
 ```text
-arbitrary filesystem paths
+arbitrary filesystem paths outside allow-listed roots
+arbitrary remote hosts outside allow-listed hosts
 arbitrary shell commands
 arbitrary binaries
 arbitrary PHP classes
@@ -783,6 +896,43 @@ arbitrary storage adapters
 ```
 
 Only capabilities explicitly exposed by Super Images may be selected.
+
+Local-path and remote-URL source settings are security-sensitive and must be validated carefully.
+
+See `../security.md`.
+
+---
+
+## 28A. Source configuration
+
+`sources.local` and `sources.remote` are required configuration areas when non-Asset inputs are enabled.
+
+They control:
+
+- whether `/images/abc.png` style sources work;
+- whether CDN/remote URLs can be fetched and optimized;
+- allow-listed roots/hosts;
+- download timeouts and max bytes.
+
+Non-Asset sources still use the same profiles/variants/formats/generation pipeline.
+
+---
+
+## 28B. Auto-generate configuration
+
+`autoGenerate` controls queue fan-out when Craft Assets change.
+
+Recommended defaults:
+
+```text
+enabled: true when profiles are configured
+onUpload: true
+onReplace: true
+queue: true
+never process heavy encodes synchronously in the upload request
+```
+
+Volume/field overrides may disable or narrow automatic generation.
 
 ---
 

@@ -18,7 +18,7 @@ Twig must never become an image processor.
 
 ## 1. First-Class Twig API
 
-Primary filters/functions:
+Primary filters/functions must support Craft Assets **and** non-Asset sources:
 
 ```twig
 {{ asset|generateUrl() }}
@@ -32,13 +32,26 @@ Primary filters/functions:
 {{ asset|generatePictureTag() }}
 {{ asset|generatePictureTag(['avif', 'webp', 'jpg']) }}
 {{ asset|generatePictureTag({ profile: 'responsive', sizes: '100vw' }) }}
+
+{# Local folder / public path images #}
+{{ '/images/abc.png'|generateUrl('webp') }}
+{{ '/images/abc.png'|generatePictureTag({ profile: 'responsive' }) }}
+
+{# Allow-listed CDN / remote originals #}
+{{ 'https://cdn.example.com/media/hero.jpg'|generateUrl('avif') }}
+{{ 'https://cdn.example.com/media/hero.jpg'|generatePictureTag() }}
 ```
 
-Exact syntax may be refined, but these three capabilities are mandatory:
+Exact syntax may be refined, but these capabilities are mandatory:
 
 1. URL
 2. `<img>`
 3. `<picture>`
+4. Craft Asset sources
+5. Local-path sources (allow-listed roots)
+6. Remote/CDN URL sources (allow-listed hosts)
+
+Local/remote sources use the same Generation Service / URL services as Assets. They are not a second mini-plugin.
 
 ---
 
@@ -280,10 +293,13 @@ Twig/extensions must not:
 - write storage;
 - query GeneratedImage tables;
 - stat/HEAD derivatives on render;
+- read existence markers on render;
 - shell out;
-- download remote originals.
+- download remote originals during HTML render.
 
-If a helper needs those, the architecture is wrong.
+Source allow-list validation for local/remote inputs may occur while building deterministic/signed URLs, but must remain cheap and must not fetch or process image bytes.
+
+If a helper needs processing I/O on render, the architecture is wrong.
 
 ---
 

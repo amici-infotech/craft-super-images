@@ -158,26 +158,38 @@ Guidelines:
 
 ---
 
-## 6. Asset Save Integration
+## 6. Automatic Asset Upload / Replace Integration
 
-Optional event-driven eager generation:
+Automatic queue generation is a **first-class** Phase 2 feature.
+
+When a Craft Asset is uploaded or its file is replaced/changed, Super Images must enqueue generation from configured profiles.
 
 ```text
-Asset::EVENT_AFTER_SAVE
-  ↓
-shouldGenerate?
-  ↓
-build manifest for configured profiles
-  ↓
-enqueue batch/unit jobs
+Asset uploaded
+  or Asset file replaced
+  or relevant source metadata changed (e.g. focal point, if configured)
+        ↓
+autoGenerate enabled for general/volume/field?
+        ↓
+build Generation Manifest from config
+        ↓
+enqueue Craft queue jobs
+        ↓
+Generation Service
 ```
 
 Rules:
 
-- must be configurable per volume/field/general;
-- should not block the request with heavy AVIF work by default;
-- must ignore irrelevant saves where no Super Images profiles apply;
-- must be safe during migrations/imports (bulk import mode may disable sync fan-out).
+- driven by `config/super-images.php` / CP settings (`autoGenerate`);
+- configurable globally and per volume/field;
+- **must queue by default** — do not block the upload HTTP request with heavy AVIF/WebP work;
+- must ignore saves where no Super Images profiles apply;
+- must be idempotent (safe if jobs retry);
+- must be safe during migrations/imports (`disableDuringImport` / bulk mute switch);
+- file replacement must invalidate/create new identities as source version changes;
+- progress/failures appear through normal queue + diagnostics tooling.
+
+This is not optional polish. Sites that configure profiles for a volume should get derivatives without manually running CLI after every upload, unless auto-generate is explicitly disabled.
 
 ---
 
@@ -305,11 +317,14 @@ Use fake/mocked GenerationService in unit tests and real pipeline tests sparingl
 - [ ] filters work
 - [ ] queue jobs work
 - [ ] batching is memory-safe
-- [ ] optional asset-save enqueue works
+- [ ] automatic enqueue on Asset upload works
+- [ ] automatic enqueue on Asset file replace works
+- [ ] auto-generate can be disabled globally/per volume
+- [ ] upload request is not blocked by heavy encoding
 - [ ] config command shows effective config
 - [ ] status command reports safe diagnostics
 - [ ] no duplicate processing pipeline invented
-- [ ] tests cover CLI/queue orchestration
+- [ ] tests cover CLI/queue orchestration and auto-generate hooks
 
 ---
 

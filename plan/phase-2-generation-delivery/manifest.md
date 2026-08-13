@@ -272,17 +272,19 @@ Eager flows:
 php craft super-images/generate --volume=images
 ```
 
-### On Asset save (optional configurable behavior)
+### On Asset upload / replace (first-class behavior)
 
 ```text
-Asset saved
+Asset uploaded or file replaced
+  ↓
+autoGenerate config allows it?
   ↓
 build manifest for relevant profiles
   ↓
 enqueue jobs
 ```
 
-Asset-save eager generation must be configurable and safe for large uploads.
+This must be configurable and safe for large uploads (queue only; no synchronous heavy encode in the request).
 
 Default should likely enqueue rather than synchronously generate huge AVIF sets during HTTP requests.
 

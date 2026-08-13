@@ -31,13 +31,16 @@ Verify all remain true:
 1. One canonical generation pipeline.
 2. One configuration resolver and precedence model.
 3. No GeneratedImage database table.
-4. No permanent local mirror requirement for remote storage.
-5. Deterministic derivative identity/paths.
-6. Normal Twig render performs no processing/exists/HEAD I/O.
-7. Runtime generation is signed and limited.
-8. CLI/queue/Twig/Playground all call the same engine.
-9. Operations/encoders/optimizers/storage remain separated.
-10. Secrets never appear in logs, identity, or Twig output.
+4. No permanent local image mirror requirement for remote storage.
+5. Existence markers only under private Craft `storage/`, never webroot.
+6. Craft Assets, local paths, and allow-listed remote URLs all work.
+7. Deterministic derivative identity/paths.
+8. Normal Twig render performs no processing/exists/marker/HEAD I/O.
+9. Runtime generation is signed and limited.
+10. Automatic queue generation runs on Asset upload/replace when configured.
+11. CLI/queue/Twig/Playground all call the same engine.
+12. Operations/encoders/optimizers/storage remain separated.
+13. Secrets never appear in logs, identity, markers, or Twig output.
 
 If any fail, release is blocked.
 
@@ -124,18 +127,25 @@ Batch generate a realistic volume subset without unbounded memory growth.
 
 ## 5. Security QA
 
+Full list: `../security.md`.
+
+Minimum release checks:
+
 - [ ] unsigned runtime requests rejected
 - [ ] tampered signatures rejected
 - [ ] expired signatures rejected
 - [ ] over-limit transforms rejected
-- [ ] path traversal rejected
-- [ ] arbitrary remote source rejected
-- [ ] secrets not logged
+- [ ] local path traversal / escape from allow-listed roots rejected
+- [ ] arbitrary remote host rejected
+- [ ] SSRF to private/loopback addresses rejected
+- [ ] secrets not logged or written into markers
+- [ ] markers never web-accessible
 - [ ] CP permission boundaries enforced
 - [ ] ProcessRunner used for external binaries
 - [ ] Playground cannot write unmanaged paths
+- [ ] auto-generate does not block upload requests with heavy encodes
 
-Consider threat-model review focused on runtime endpoint and storage credentials.
+Consider threat-model review focused on runtime endpoint, non-Asset sources, and storage credentials.
 
 ---
 

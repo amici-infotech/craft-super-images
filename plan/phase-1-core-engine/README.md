@@ -4,7 +4,7 @@ Phase 1 builds the **core image infrastructure** of Super Images.
 
 This phase is intentionally focused on the engine underneath the plugin. It must be usable by later phases without requiring those phases to create alternate implementations of core services.
 
-At the end of Phase 1, Super Images must be able to take a Craft Asset, resolve a configured Profile/Variant, process the image, encode it, optimize it, and store the resulting derivative through the configured storage adapter.
+At the end of Phase 1, Super Images must be able to take a Craft Asset **or** an allow-listed local path **or** an allow-listed remote/CDN URL, resolve a configured Profile/Variant, process the image, encode it, optimize it, and store the resulting derivative through the configured storage adapter.
 
 ---
 
@@ -360,21 +360,31 @@ The exact internal class names may differ, but the separation of responsibilitie
 
 ---
 
-# Source Asset Handling
+# Source Handling
 
-The engine must work with Craft Assets.
+The engine must work with:
+
+```text
+1. Craft Assets
+2. Local paths (e.g. /images/abc.png) inside allow-listed roots
+3. Remote / CDN URLs against allow-listed hosts
+```
 
 The source layer should be responsible for:
 
-- Resolving the Asset
+- Detecting source kind
+- Resolving Craft Assets
+- Resolving/canonicalizing local paths with allow-list checks
+- Fetching remote/CDN sources with SSRF protections, timeouts, and size limits
 - Opening the source image
 - Reading source metadata where required
 - Detecting dimensions
 - Detecting source format
-- Handling local source files
+- Computing stable source identity
 - Handling Assets stored on remote volumes where supported by Craft
+- Providing temporary local files when required
 
-The engine should not assume that every Craft Asset is stored locally.
+The engine should not assume that every source is a Craft Asset or that every Craft Asset is stored locally.
 
 ---
 
@@ -764,7 +774,9 @@ Optimize
  ↓
 Remote storage
  ↓
-Delete temporary local file
+Private existence marker under storage/ (optional but recommended)
+ ↓
+Delete temporary local processing file
 ```
 
 Do not do:
@@ -772,14 +784,16 @@ Do not do:
 ```text
 Process
  ↓
-Local permanent cache
+Local permanent image cache in web folder
  ↓
 Remote storage
 ```
 
-just to maintain an existence cache.
+just to keep a public/local mirror of the image.
 
-The storage adapter is responsible for storage operations.
+A tiny private marker under Craft `storage/` is allowed for existence checks during generation/CLI/runtime.
+
+The storage adapter is responsible for storage operations. Markers are an orchestration aid, not public delivery files.
 
 ---
 
@@ -1264,6 +1278,13 @@ Phase 1 is complete only when all of the following are true.
 - [ ] Native fallback exists where appropriate.
 - [ ] Optimization failures are handled correctly.
 
+## Sources
+
+- [ ] Craft Asset sources work.
+- [ ] Local-path sources work inside allow-listed roots.
+- [ ] Remote/CDN URL sources work for allow-listed hosts.
+- [ ] Path traversal / SSRF protections are enforced.
+
 ## Storage
 
 - [ ] Local adapter works.
@@ -1274,7 +1295,9 @@ Phase 1 is complete only when all of the following are true.
 - [ ] Custom adapter contract exists.
 - [ ] URLs can be generated.
 - [ ] Temporary files are cleaned.
-- [ ] Remote storage does not require a permanent local mirror.
+- [ ] Remote storage does not require a permanent local image mirror.
+- [ ] Existence markers can be stored under private Craft `storage/`.
+- [ ] Markers are never written to the web folder.
 
 ## Generation
 

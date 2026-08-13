@@ -181,19 +181,47 @@ It must be useful to Twig, CLI, Queue, Playground, and diagnostics without requi
 
 ## 8. Source Resolver
 
-The Source Resolver converts a Craft Asset into an image source usable by the selected driver.
+The Source Resolver converts an allowed image source into a normalized source usable by the selected driver.
+
+Supported source kinds:
+
+```text
+1. Craft Asset
+2. Local path / local URL path   e.g. /images/abc.png
+3. Remote / CDN URL              e.g. https://cdn.example.com/hero.jpg
+```
 
 Responsibilities:
 
-- resolve the Asset;
-- obtain the source file;
-- handle local sources;
-- handle remote Craft volumes where supported;
+- detect/normalize source kind;
+- resolve Craft Assets through Craft APIs;
+- resolve local paths only inside configured allow-listed roots;
+- fetch remote/CDN URLs only for configured allow-listed hosts with SSRF protections;
+- obtain a usable source file/stream;
+- handle Craft Assets stored on remote volumes where supported;
 - determine source metadata;
+- compute a stable source identity for generation identity;
 - provide a temporary local source when required;
 - clean up temporary resources.
 
 It must not process, encode, optimize, or store derivatives.
+
+Conceptual model:
+
+```text
+SourceReference
+├── kind: asset | localPath | remoteUrl
+├── assetId? 
+├── path?
+├── url?
+└── normalized identity inputs
+        ↓
+SourceResolver
+        ↓
+SourceImage (bytes/path + metadata + identity)
+```
+
+Local-path and remote-URL support is mandatory for the product, not optional polish.
 
 ---
 
@@ -204,7 +232,7 @@ Craft Asset APIs should be isolated at the application/infrastructure boundary.
 Prefer:
 
 ```text
-Craft Asset
+Craft Asset | local path | remote URL
     ↓
 Source Resolver
     ↓
@@ -213,7 +241,7 @@ Internal Source representation
 Image Engine
 ```
 
-This keeps the image engine independently testable.
+This keeps the image engine independently testable and reusable for non-Asset sources.
 
 ---
 
@@ -574,9 +602,27 @@ Processing may require local files even when permanent storage is remote.
 Temporary processing storage
              ≠
 Permanent derivative storage
+             ≠
+Existence marker storage
 ```
 
-Temporary storage exists only for processing and must never become an implicit permanent cache.
+Temporary storage exists only for processing and must never become an implicit permanent image cache.
+
+### Existence markers
+
+For remote/CDN derivative storage, Super Images may maintain tiny local existence markers under private Craft storage, for example:
+
+```text
+storage/super-images/markers/<identity...>
+```
+
+Rules:
+
+- markers are not image binaries;
+- markers are never placed in the public web folder;
+- markers help generation/CLI/runtime avoid repeated remote HEAD checks;
+- normal Twig rendering must not read markers;
+- deleting a remote derivative should also clear its marker when cleanup knows about it.
 
 ---
 
@@ -818,11 +864,17 @@ Requirements:
 
 ## 32. Security Boundary
 
-Treat all external inputs as untrusted, especially runtime transformation parameters, Asset IDs, format names, operation names, paths, storage configuration, and external tool arguments.
+Treat all external inputs as untrusted, especially runtime transformation parameters, Asset IDs, local paths, remote URLs, format names, operation names, storage configuration, and external tool arguments.
 
 Never allow arbitrary runtime input to become an arbitrary shell command or arbitrary filesystem path.
 
-Storage credentials must never appear in logs, generated URLs, generation identity, Twig output, or diagnostics.
+Local-path sources require allow-listed roots and canonicalization.
+
+Remote URL sources require host allow-lists, SSRF protections, timeouts, and size limits.
+
+Storage credentials must never appear in logs, generated URLs, generation identity, Twig output, markers, or diagnostics.
+
+See `../security.md` for the full precaution list.
 
 ---
 
@@ -1033,18 +1085,20 @@ These must remain true throughout the project:
 1. There is one canonical image-generation pipeline.
 2. There is one canonical configuration resolver.
 3. There is no GeneratedImage database table.
-4. Remote permanent storage does not require a permanent local mirror.
-5. Derivative identity is deterministic.
-6. Operations do not know about storage.
-7. Encoders do not know about storage.
-8. Storage does not know about Twig.
-9. Twig does not implement image processing.
-10. CLI does not implement image processing.
-11. External processes are isolated behind safe infrastructure.
-12. Optional tools are capability-detected.
-13. Normal frontend rendering does not process images.
-14. Normal frontend rendering does not query generated-image state.
-15. Future phases build on Phase 1 rather than replacing it.
+4. Remote permanent storage does not require a permanent local image mirror.
+5. Existence markers, if used, live only under private Craft `storage/`.
+6. Craft Assets, local paths, and allow-listed remote URLs share the same pipeline.
+7. Derivative identity is deterministic.
+8. Operations do not know about storage.
+9. Encoders do not know about storage.
+10. Storage does not know about Twig.
+11. Twig does not implement image processing.
+12. CLI does not implement image processing.
+13. External processes are isolated behind safe infrastructure.
+14. Optional tools are capability-detected.
+15. Normal frontend rendering does not process images.
+16. Normal frontend rendering does not query generated-image state or markers.
+17. Future phases build on Phase 1 rather than replacing it.
 
 ---
 

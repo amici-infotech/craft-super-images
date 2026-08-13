@@ -24,14 +24,15 @@ The generation engine must never write directly to local disks or cloud SDKs out
 
 1. **Storage is adapter-based.**
 2. **One Storage Manager coordinates adapters.**
-3. **Remote storage does not require a permanent local mirror.**
-4. **Temporary processing files are not permanent derivatives.**
-5. **Derivative paths are deterministic.**
-6. **Storage credentials never enter generation identity.**
-7. **Storage credentials never appear in logs or Twig output.**
-8. **Frontend rendering must not depend on existence checks.**
-9. **Custom adapters must be registerable.**
-10. **S3-compatible providers share one adapter family where practical.**
+3. **Remote storage does not require a permanent local image mirror.**
+4. **Existence markers may live under private Craft `storage/`, never webroot.**
+5. **Temporary processing files are not permanent derivatives.**
+6. **Derivative paths are deterministic.**
+7. **Storage credentials never enter generation identity.**
+8. **Storage credentials never appear in logs or Twig output.**
+9. **Frontend rendering must not depend on existence checks or markers.**
+10. **Custom adapters must be registerable.**
+11. **S3-compatible providers share one adapter family where practical.**
 
 ---
 
@@ -318,18 +319,18 @@ Never place secrets in paths.
 
 ---
 
-## 10. No Permanent Local Mirror for Remote Storage
+## 10. No Permanent Local Image Mirror for Remote Storage
 
 This is forbidden as a general architecture:
 
 ```text
 Process
   ↓
-Write permanent local cache
+Write permanent local image copy under webroot/cache
   ↓
 Upload remote copy
   ↓
-Use local cache as source of truth
+Use local image copy as source of truth
 ```
 
 Required model:
@@ -339,14 +340,46 @@ Process using temporary local files if needed
   ↓
 Validate
   ↓
-Write directly to configured storage
+Write derivative bytes directly to configured storage (S3/Spaces/R2/local)
   ↓
-Delete temporary files
+Optionally write a tiny existence marker under private Craft storage/
+  ↓
+Delete temporary processing files
 ```
 
-Existence authority for a remote derivative is the remote adapter (when an existence check is actually required).
+### Existence Marker Store
 
-Normal frontend rendering still must not perform those checks.
+For CDN/remote storage cases, checking remote existence on every generation decision can be slow/expensive.
+
+Super Images may therefore maintain **dummy/marker files** under Craft’s private storage folder:
+
+```text
+storage/super-images/markers/...
+```
+
+Marker rules:
+
+- store markers only under Craft `storage/`, never under the public web folder;
+- markers are tiny (empty file or small JSON metadata), not image binaries;
+- marker path is derived from generation identity / deterministic derivative path;
+- write marker after successful remote store;
+- delete marker when cleanup deletes the remote object;
+- generation/CLI/runtime may consult markers before calling remote `exists()`/HEAD;
+- Twig HTML rendering must not read markers;
+- markers must never be publicly URL-routable.
+
+Conceptual helper:
+
+```text
+ExistenceMarkerStore
+├── mark(identity/path)
+├── has(identity/path)
+└── clear(identity/path)
+```
+
+Remote adapter remains the authority for the actual public file.
+
+Markers are an optimization/index for generation orchestration only.
 
 ---
 
@@ -425,20 +458,31 @@ Invalid output must fail before permanent storage.
 
 Storage adapters must support `exists()` because Phase 2 runtime generation and Phase 3 cleanup/diagnostics need it.
 
+Recommended generation-time order for remote storage:
+
+```text
+1. check private existence marker under storage/
+2. if missing, optionally check remote exists()
+3. generate if still missing
+4. store remote object
+5. write/update marker
+```
+
 However:
 
 ```text
 Normal Twig render
   ↓
 NO exists()
+NO marker reads
 NO HEAD request
 NO filesystem stat of derivative
 ```
 
-Existence checks are for:
+Existence checks/markers are for:
 
 - lazy generation decision paths;
-- CLI status/diagnostics;
+- CLI skip-if-exists;
 - cleanup tools;
 - explicit admin operations.
 
@@ -762,14 +806,16 @@ Playground previews should use temporary/preview storage policies and must not p
 
 1. Generation writes only through storage adapters.
 2. No GeneratedImage DB table is used as storage index.
-3. Remote derivatives do not require permanent local mirrors.
-4. Temporary files are ephemeral.
-5. Paths are deterministic and centrally calculated.
-6. Credentials never enter identity/logs/URLs.
-7. Normal frontend rendering does not call exists().
-8. S3/Spaces/R2 share S3-compatible architecture where possible.
-9. Custom adapters plug into the registry/manager.
-10. Craft Volume storage remains separate from derivative storage.
+3. Remote derivatives do not require permanent local image mirrors.
+4. Existence markers, if used, live only under private Craft `storage/`.
+5. Markers are never placed in the web folder and are never public delivery files.
+6. Temporary files are ephemeral.
+7. Paths are deterministic and centrally calculated.
+8. Credentials never enter identity/logs/URLs/markers.
+9. Normal frontend rendering does not call exists() or read markers.
+10. S3/Spaces/R2 share S3-compatible architecture where possible.
+11. Custom adapters plug into the registry/manager.
+12. Craft Volume storage remains separate from derivative storage.
 
 ---
 
@@ -788,7 +834,9 @@ Storage is complete for Phase 1 when:
 - [ ] Deterministic paths work
 - [ ] Base/CDN URLs work
 - [ ] Temporary files are cleaned up
-- [ ] Remote writes do not leave permanent local mirrors
+- [ ] Remote writes do not leave permanent local image mirrors
+- [ ] Existence marker store works under private `storage/`
+- [ ] Markers are never written under webroot
 - [ ] exists/delete APIs exist for later phases
 - [ ] Tests cover local + mocked S3-compatible behavior
 - [ ] Pipeline can store a final derivative and return a URL
