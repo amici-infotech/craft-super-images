@@ -1,0 +1,59 @@
+{
+    "name": "amici/craft-super-images",
+    "description": "High-performance image processing, transformation, encoding, optimization, storage, and delivery for Craft CMS.",
+    "version": "5.0.0",
+    "type": "craft-plugin",
+    "keywords": [
+        "craft",
+        "cms",
+        "craftcms",
+        "craft-plugin",
+        "images",
+        "transforms",
+        "webp",
+        "avif",
+        "optimization",
+        "s3",
+        "cdn",
+        "craft5"
+    ],
+    "license": "proprietary",
+    "authors": [
+        {
+            "name": "Amici Infotech",
+            "homepage": "https://amiciinfotech.com"
+        }
+    ],
+    "support": {
+        "email": "contact@amiciinfotech.com",
+        "issues": "https://github.com/amici-infotech/craft-super-images/issues?state=open",
+        "source": "https://github.com/amici-infotech/craft-super-images",
+        "docs": "https://docs.amiciinfotech.com/craft-cms/super-images"
+    },
+    "require": {
+        "php": "^8.2 || ^8.3 || ^8.4",
+        "craftcms/cms": "^5.0",
+        "ext-json": "*"
+    },
+    "suggest": {
+        "ext-gd": "Baseline image driver fallback.",
+        "ext-imagick": "Recommended image driver when Libvips is unavailable.",
+        "jcupitt/vips": "Preferred high-performance Libvips driver.",
+        "aws/aws-sdk-php": "Required for S3 / DigitalOcean Spaces / Cloudflare R2 storage adapters."
+    },
+    "autoload": {
+        "psr-4": {
+            "amici\\SuperImages\\": "src/"
+        }
+    },
+    "extra": {
+        "handle": "super-images",
+        "name": "Super Images",
+        "description": "Image processing infrastructure for Craft CMS — transforms, formats, optimization, storage, and delivery.",
+        "developer": "Amici Infotech",
+        "developerUrl": "https://amiciinfotech.com",
+        "documentationUrl": "https://docs.amiciinfotech.com/craft-cms/super-images",
+        "changelogUrl": "https://github.com/amici-infotech/craft-super-images/blob/main/CHANGELOG.md",
+        "class": "amici\\SuperImages\\Plugin"
+    }
+}

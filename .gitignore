@@ -1,0 +1,15 @@
+# Development files
+.cursorrules
+.DS_Store
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Composer
+/vendor/
+composer.lock
+/*.txt
