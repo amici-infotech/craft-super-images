@@ -60,7 +60,7 @@ Must not remove:
 ```php
 'cleanup' => [
     'previewRetentionDays' => 2,
-    'obsoleteRetentionDays' => 30,
+    'generatedRetentionDays' => 365,
     'allowRemoteScan' => false,
 ],
 ```

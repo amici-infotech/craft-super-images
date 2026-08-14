@@ -203,12 +203,15 @@ return [
         // ],
     ],
 
-    // Cleanup / retention for Playground previews and obsolete objects.
+    // Cleanup / retention for Playground previews and generated derivatives.
     'cleanup' => [
         // Delete Playground files under preview/ older than this many days.
         'previewRetentionDays' => 2,
-        // Retention window for obsolete derivative cleanup strategies.
-        'obsoleteRetentionDays' => 30,
+        // Minimum age (days) before `php craft super-images/cleanup --orphaned` or
+        // `--all` may delete a *generated* (non-preview) derivative. Defaults to a
+        // full year so images stay cached long-term — raise or lower as needed.
+        // Does not affect immediate cleanup on Asset delete/replace (see policies.cleanup below).
+        'generatedRetentionDays' => 365,
         // Allow expensive remote storage listing during cleanup (keep false).
         'allowRemoteScan' => false,
     ],

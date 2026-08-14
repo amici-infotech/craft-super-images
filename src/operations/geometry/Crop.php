@@ -20,7 +20,11 @@ use amici\SuperImages\operations\AbstractOperation;
  * Crop Operation
  *
  * Crops the image to the requested dimensions from a focal position.
- * Supported options: `width`, `height` (default to current dimensions), `position` (default: "center-center").
+ * Supported options: `width`, `height`, `position` (default: "center-center").
+ * When only one of `width`/`height` is given, the other is derived proportionally
+ * from the source aspect ratio (see {@see AbstractOperation::resolveDimensions()})
+ * rather than defaulting to the full source size — this avoids cropping a thin
+ * sliver out of the entire source when only a width or height is requested.
  * Supported drivers: GD, Imagick, libvips.
  */
 final class Crop extends AbstractOperation
@@ -45,8 +49,7 @@ final class Crop extends AbstractOperation
      */
     public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle
     {
-        $width = (int)($this->options['width'] ?? $handle->width);
-        $height = (int)($this->options['height'] ?? $handle->height);
+        [$width, $height] = $this->resolveDimensions($handle);
         $position = (string)($this->options['position'] ?? 'center-center');
 
         return match (true) {

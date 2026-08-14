@@ -114,6 +114,67 @@ final class AssetDerivativeIndex extends Component
     }
 
     /**
+     * Deletes every asset index file, used after a full derivative purge
+     * (`--all`) where all indexes become stale at once.
+     *
+     * @return void
+     */
+    public function clearAll(): void
+    {
+        foreach ($this->allIndexedAssetIds() as $assetId) {
+            $this->clear($assetId);
+        }
+    }
+
+    /**
+     * Returns the timestamp of the most recent write to an asset's index, if any.
+     *
+     * @param int $assetId Craft asset element ID.
+     *
+     * @return int|null Unix timestamp of the last `record()` call, or null when unindexed.
+     */
+    public function updatedAt(int $assetId): ?int
+    {
+        $payload = $this->read($assetId);
+        $updatedAt = $payload['updatedAt'] ?? null;
+
+        return is_int($updatedAt) ? $updatedAt : null;
+    }
+
+    /**
+     * Lists every Craft asset ID with an on-disk derivative index file.
+     *
+     * Used by bulk cleanup sweeps (e.g. orphan detection) to enumerate indexed
+     * assets without scanning storage adapters directly.
+     *
+     * @return list<int> Asset IDs, sorted ascending.
+     */
+    public function allIndexedAssetIds(): array
+    {
+        $root = $this->rootPath();
+
+        if (!is_dir($root)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach (scandir($root) ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..' || !str_ends_with($entry, '.json')) {
+                continue;
+            }
+
+            $id = (int) substr($entry, 0, -5);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        sort($ids);
+
+        return $ids;
+    }
+
+    /**
      * Reads and decodes an asset index payload.
      *
      * @param int $assetId Craft asset element ID.
@@ -191,13 +252,23 @@ final class AssetDerivativeIndex extends Component
      */
     private function indexPath(int $assetId): string
     {
+        return rtrim($this->rootPath(), DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR
+            . $assetId
+            . '.json';
+    }
+
+    /**
+     * Returns (and lazily resolves) the absolute directory holding index files.
+     *
+     * @return string Absolute directory path.
+     */
+    private function rootPath(): string
+    {
         if ($this->_rootPath === null) {
             $this->_rootPath = (string) Craft::getAlias('@storage/super-images/asset-index');
         }
 
-        return rtrim($this->_rootPath, DIRECTORY_SEPARATOR)
-            . DIRECTORY_SEPARATOR
-            . $assetId
-            . '.json';
+        return $this->_rootPath;
     }
 }

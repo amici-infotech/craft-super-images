@@ -273,8 +273,8 @@
                         <dd>{{ settings.cleanup.previewRetentionDays ?? 2 }} {{ "days"|t('super-images') }}</dd>
                     </div>
                     <div class="si-settings__row">
-                        <dt>{{ "Obsolete retention"|t('super-images') }}</dt>
-                        <dd>{{ settings.cleanup.obsoleteRetentionDays ?? 30 }} {{ "days"|t('super-images') }}</dd>
+                        <dt>{{ "Generated derivative retention"|t('super-images') }}</dt>
+                        <dd>{{ settings.cleanup.generatedRetentionDays ?? 365 }} {{ "days"|t('super-images') }}</dd>
                     </div>
                     <div class="si-settings__row">
                         <dt>{{ "Remote scan"|t('super-images') }}</dt>

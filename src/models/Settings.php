@@ -158,10 +158,18 @@ class Settings extends Model
     /** @var array<string, mixed> Per-field overrides for asset fields. */
     public array $fields = [];
 
-    /** @var array<string, mixed> Retention and cleanup rules for preview and obsolete derivatives. */
+    /** @var array<string, mixed> Retention and cleanup rules for preview and generated derivatives. */
     public array $cleanup = [
         'previewRetentionDays' => 2,
-        'obsoleteRetentionDays' => 30,
+        /**
+         * Minimum age (in days) a *generated* (non-preview) derivative must reach before
+         * `--orphaned` or `--all` console cleanup is allowed to delete it. Defaults to a
+         * full year so derivatives are cached long-term by default; raise or lower via
+         * config. This never blocks `purgeAssetDerivatives()` triggered by an explicit
+         * Craft Asset delete/replace — those always remove the affected asset's files
+         * immediately since the source itself changed.
+         */
+        'generatedRetentionDays' => 365,
         /** Remote storage listing is expensive; keep off unless explicitly enabled. */
         'allowRemoteScan' => false,
     ];

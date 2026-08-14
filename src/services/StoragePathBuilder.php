@@ -15,19 +15,25 @@ use yii\base\Component;
  *
  * Constructs sharded, deterministic storage paths from generation identity,
  * profile, variant, format, and optional namespace (e.g. preview dates).
+ *
+ * Layout is deliberately flat: two short shard directories (4 hex chars total,
+ * up to 65,536 buckets) hold the derivative file directly — there is no
+ * per-derivative directory. Profile and variant are embedded in the filename
+ * for readability; they are not needed for uniqueness since the identity hash
+ * already encodes profile, variant, format, and every operation/encoder option.
  */
 final class StoragePathBuilder extends Component
 {
     /**
      * Build a deterministic storage-relative path.
      *
-     * Default layout: `{prefix}/{identity}/{profile}/{variant}.ext`
-     * With namespace (e.g. `preview/20260814`): `{namespace}/{prefix}/{identity}/{profile}/{variant}.ext`
+     * Default layout: `{shard1}/{shard2}/{identity}--{profile}-{variant}.ext`
+     * With namespace (e.g. `preview/20260814`): `{namespace}/{shard1}/{shard2}/{identity}--{profile}-{variant}.ext`
      *
      * @param string $identity The SHA-256 generation identity hash.
      * @param string $format The output format (jpeg is stored as .jpg).
-     * @param string|null $profile Optional profile segment.
-     * @param string|null $variant Optional variant segment.
+     * @param string|null $profile Optional profile segment embedded in the filename.
+     * @param string|null $variant Optional variant segment embedded in the filename.
      * @param string|null $namespace Optional namespace prefix (preview paths, etc.).
      *
      * @return string Storage-relative path including file extension.
@@ -41,7 +47,10 @@ final class StoragePathBuilder extends Component
     ): string {
         $format = strtolower($format);
         $extension = $format === 'jpeg' ? 'jpg' : $format;
-        $prefix = substr($identity, 0, 2);
+
+        $shard1 = substr($identity, 0, 2);
+        $shard2 = substr($identity, 2, 2);
+
         $segments = [];
 
         if ($namespace !== null && $namespace !== '') {
@@ -51,17 +60,14 @@ final class StoragePathBuilder extends Component
             }
         }
 
-        $segments[] = $prefix;
-        $segments[] = $identity;
+        $segments[] = $shard1;
+        $segments[] = $shard2;
 
-        if ($profile !== null && $profile !== '') {
-            $segments[] = $profile;
-        }
+        $suffixParts = array_filter([$profile, $variant], static fn(?string $part): bool => $part !== null && $part !== '');
+        $filename = $suffixParts !== []
+            ? $identity . '--' . implode('-', $suffixParts)
+            : $identity;
 
-        if ($variant !== null && $variant !== '') {
-            $segments[] = $variant;
-        }
-
-        return implode('/', $segments) . '.' . $extension;
+        return implode('/', $segments) . '/' . $filename . '.' . $extension;
     }
 }

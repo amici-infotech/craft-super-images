@@ -20,7 +20,10 @@ use amici\SuperImages\operations\AbstractOperation;
  * Fill Operation
  *
  * Scales and crops the image to completely fill the target dimensions.
- * Supported options: `width`, `height` (default to current dimensions), `position` (default: "center-center").
+ * Supported options: `width`, `height`, `position` (default: "center-center").
+ * When only one of `width`/`height` is given, the other is derived proportionally
+ * from the source aspect ratio (see {@see AbstractOperation::resolveDimensions()})
+ * rather than defaulting to the full source size.
  * Supported drivers: GD, Imagick, libvips.
  */
 final class Fill extends AbstractOperation
@@ -45,8 +48,7 @@ final class Fill extends AbstractOperation
      */
     public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle
     {
-        $width = (int)($this->options['width'] ?? $handle->width);
-        $height = (int)($this->options['height'] ?? $handle->height);
+        [$width, $height] = $this->resolveDimensions($handle);
         $position = (string)($this->options['position'] ?? 'center-center');
 
         return match (true) {

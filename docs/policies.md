@@ -55,6 +55,8 @@ Each indexed entry records the derivative identity, storage path, and adapter ha
 
 Preview artifacts under the `preview/` namespace are handled separately — see [CLI cleanup](./cli.md) and `cleanup.previewRetentionDays`.
 
+Bulk console cleanup (`super-images/cleanup --orphaned` / `--all`) is separately guarded by `cleanup.generatedRetentionDays` (default **365 days**) so generated derivatives stay cached for at least a year by default, independent of the `onAssetDelete`/`onAssetReplace` hooks above — see [CLI cleanup → Cache & retention](./cli.md#cache--retention).
+
 ---
 
 ## Fallback
