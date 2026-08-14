@@ -70,6 +70,12 @@ class SuperImagesVariable
     /**
      * Plan and return an `<img>` tag for one derivative.
      *
+     * Extra HTML attributes:
+     * - top-level keys that are not reserved options (e.g. `id`, `class`, `data-*`)
+     * - `attrs` / `attributes` / `imgAttrs` bag (merged last for those keys)
+     *
+     * Managed attrs (`src`, and dimensions when known) always win.
+     *
      * @param Asset|string|int $source
      * @param array<string, mixed> $options
      */
@@ -83,34 +89,41 @@ class SuperImagesVariable
             return new Markup('<div class="error">Skipped: ' . $message . '</div>', 'UTF-8');
         }
 
-        $attrs = [
-            'src' => $planned->deliveryUrl,
+        $defaults = [
             'alt' => (string) ($options['alt'] ?? $this->defaultAlt($source)),
             'loading' => $options['loading'] ?? 'lazy',
             'decoding' => $options['decoding'] ?? 'async',
         ];
 
         if ($planned->widthHint !== null) {
-            $attrs['width'] = $planned->widthHint;
+            $defaults['width'] = $planned->widthHint;
         }
 
         if ($planned->heightHint !== null) {
-            $attrs['height'] = $planned->heightHint;
-        }
-
-        if (!empty($options['class'])) {
-            $attrs['class'] = $options['class'];
+            $defaults['height'] = $planned->heightHint;
         }
 
         if (!empty($options['sizes'])) {
-            $attrs['sizes'] = $options['sizes'];
+            $defaults['sizes'] = $options['sizes'];
         }
+
+        $attrs = $this->mergeHtmlAttributes($defaults, $this->extractHtmlAttributes($options), [
+            'src' => $planned->deliveryUrl,
+        ]);
 
         return new Markup(Html::tag('img', '', $attrs), 'UTF-8');
     }
 
     /**
-     * Plan a responsive `<picture>` with profile formats (or explicit formats).
+     * Plan a responsive `<picture>` with multi-width srcsets per format.
+     *
+     * Uses profile variants (or explicit `variants`) as `w` descriptors.
+     * Optional `variant` picks the fallback `<img src>` (default: middle / `md`).
+     *
+     * Extra HTML attributes:
+     * - `pictureAttrs` / `pictureAttributes` on `<picture>`
+     * - top-level non-reserved keys + `attrs` / `attributes` / `imgAttrs` on the inner `<img>`
+     * - `sourceAttrs` / `sourceAttributes` merged onto every `<source>`
      *
      * @param Asset|string|int $source
      * @param array<string, mixed> $options
@@ -119,7 +132,6 @@ class SuperImagesVariable
     {
         $plugin = Plugin::getInstance();
         $profileName = (string) ($options['profile'] ?? $plugin->getSettings()->defaultProfile);
-        $variant = (string) ($options['variant'] ?? 'md');
         $profile = $plugin->getSettings()->profiles[$profileName] ?? [];
         $formats = $options['formats'] ?? ($profile['formats'] ?? ['webp', 'jpg']);
 
@@ -127,34 +139,48 @@ class SuperImagesVariable
             $formats = ['webp', 'jpg'];
         }
 
+        $variants = $options['variants'] ?? array_keys($profile['variants'] ?? []);
+        if (!is_array($variants) || $variants === []) {
+            $variants = [(string) ($options['variant'] ?? 'md')];
+        }
+        $variants = array_values(array_map('strval', $variants));
+
         $ordered = $this->orderFormats($formats);
         $fallback = array_pop($ordered) ?? 'jpg';
+        $fallbackVariant = $this->resolveFallbackVariant($variants, $options['variant'] ?? null);
 
-        $html = ['<picture>'];
         $sizes = (string) ($options['sizes'] ?? '100vw');
+        $pictureAttrs = $this->normalizeAttributeBag(
+            $options['pictureAttrs'] ?? $options['pictureAttributes'] ?? [],
+        );
+        $sourceAttrs = $this->normalizeAttributeBag(
+            $options['sourceAttrs'] ?? $options['sourceAttributes'] ?? [],
+        );
+
+        $html = [];
+        $html[] = $pictureAttrs === []
+            ? '<picture>'
+            : Html::beginTag('picture', $pictureAttrs);
 
         foreach ($ordered as $format) {
-            $planned = $this->plan($source, array_merge($options, [
-                'profile' => $profileName,
-                'variant' => $variant,
-                'format' => $format,
-            ]));
-
-            $html[] = Html::tag('source', '', [
-                'type' => $this->mimeFromFormat($planned->format),
-                'srcset' => $planned->deliveryUrl,
+            $html[] = Html::tag('source', '', $this->mergeHtmlAttributes($sourceAttrs, [
+                'type' => $this->mimeFromFormat($format),
+                'srcset' => $this->srcset($source, [
+                    'profile' => $profileName,
+                    'format' => $format,
+                    'variants' => $variants,
+                ]),
                 'sizes' => $sizes,
-            ]);
+            ]));
         }
 
         $imgPlanned = $this->plan($source, array_merge($options, [
             'profile' => $profileName,
-            'variant' => $variant,
+            'variant' => $fallbackVariant,
             'format' => $fallback,
         ]));
 
-        $imgAttrs = [
-            'src' => $imgPlanned->deliveryUrl,
+        $defaults = [
             'alt' => (string) ($options['alt'] ?? $this->defaultAlt($source)),
             'loading' => $options['loading'] ?? 'lazy',
             'decoding' => $options['decoding'] ?? 'async',
@@ -162,21 +188,44 @@ class SuperImagesVariable
         ];
 
         if ($imgPlanned->widthHint !== null) {
-            $imgAttrs['width'] = $imgPlanned->widthHint;
+            $defaults['width'] = $imgPlanned->widthHint;
         }
 
         if ($imgPlanned->heightHint !== null) {
-            $imgAttrs['height'] = $imgPlanned->heightHint;
+            $defaults['height'] = $imgPlanned->heightHint;
         }
 
-        if (!empty($options['class'])) {
-            $imgAttrs['class'] = $options['class'];
-        }
+        $imgAttrs = $this->mergeHtmlAttributes($defaults, $this->extractHtmlAttributes($options), [
+            'src' => $imgPlanned->deliveryUrl,
+            'srcset' => $this->srcset($source, [
+                'profile' => $profileName,
+                'format' => $fallback,
+                'variants' => $variants,
+            ]),
+        ]);
 
         $html[] = Html::tag('img', '', $imgAttrs);
         $html[] = '</picture>';
 
         return new Markup(implode("\n", $html), 'UTF-8');
+    }
+
+    /**
+     * @param list<string> $variants
+     */
+    private function resolveFallbackVariant(array $variants, mixed $requested): string
+    {
+        if (is_string($requested) && $requested !== '' && in_array($requested, $variants, true)) {
+            return $requested;
+        }
+
+        if (in_array('md', $variants, true)) {
+            return 'md';
+        }
+
+        $middle = (int) floor((count($variants) - 1) / 2);
+
+        return $variants[$middle] ?? ($variants[0] ?? 'md');
     }
 
     /**
@@ -281,6 +330,109 @@ class SuperImagesVariable
         }
 
         return '';
+    }
+
+    /**
+     * Collect HTML attributes from options.
+     *
+     * Accepts:
+     * - any top-level key that is not a reserved Super Images option
+     * - explicit bags: attrs / attributes / imgAttrs
+     *
+     * @param array<string, mixed> $options
+     * @return array<string, mixed>
+     */
+    private function extractHtmlAttributes(array $options): array
+    {
+        $attrs = [];
+
+        foreach ($options as $key => $value) {
+            if (!is_string($key) || $this->isReservedOptionKey($key)) {
+                continue;
+            }
+
+            $attrs[$key] = $value;
+        }
+
+        foreach (['attrs', 'attributes', 'imgAttrs'] as $bagKey) {
+            if (!isset($options[$bagKey])) {
+                continue;
+            }
+
+            $attrs = array_merge($attrs, $this->normalizeAttributeBag($options[$bagKey]));
+        }
+
+        return $attrs;
+    }
+
+    /**
+     * Later arrays win. Empty strings / null are dropped.
+     *
+     * @param array<string, mixed> ...$layers
+     * @return array<string, mixed>
+     */
+    private function mergeHtmlAttributes(array ...$layers): array
+    {
+        $merged = [];
+
+        foreach ($layers as $layer) {
+            foreach ($layer as $key => $value) {
+                if ($value === null || $value === '') {
+                    continue;
+                }
+                $merged[(string) $key] = $value;
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<string, mixed>
+     */
+    private function normalizeAttributeBag(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $attrs = [];
+        foreach ($value as $key => $attrValue) {
+            if (!is_string($key) && !is_int($key)) {
+                continue;
+            }
+            $attrs[(string) $key] = $attrValue;
+        }
+
+        return $attrs;
+    }
+
+    private function isReservedOptionKey(string $key): bool
+    {
+        return in_array($key, [
+            // generation / planning
+            'profile',
+            'variant',
+            'variants',
+            'format',
+            'formats',
+            'storage',
+            'preview',
+            // convenience defaults handled separately
+            'alt',
+            'loading',
+            'decoding',
+            'sizes',
+            // attribute bags / wrappers
+            'attrs',
+            'attributes',
+            'imgAttrs',
+            'pictureAttrs',
+            'pictureAttributes',
+            'sourceAttrs',
+            'sourceAttributes',
+        ], true);
     }
 
     /**

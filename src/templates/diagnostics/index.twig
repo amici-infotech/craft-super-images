@@ -5,57 +5,111 @@
 {% set crumbs = [
     { label: "Super Images"|t('super-images'), url: cpUrl('super-images') },
 ] %}
+{% set report = summary.doctor ?? null %}
+
+{% css %}
+.si-diag__solution {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #f4f9ff;
+    border: 1px solid #d9e8fb;
+    color: #1f3b57;
+    font-size: 12px;
+    line-height: 1.45;
+}
+.si-diag__solution strong {
+    display: inline-block;
+    margin-right: 4px;
+}
+.si-diag__solution code {
+    white-space: pre-wrap;
+}
+{% endcss %}
 
 {% block content %}
     <div class="readable">
-        <p>{{ "Doctor checks for drivers, storage, signing, optimizers, and queue health."|t('super-images') }}</p>
+        <p>{{ "Doctor checks for drivers, storage, signing, optimizers, and queue health. Warnings and failures include a suggested fix."|t('super-images') }}</p>
+        {% if report %}
+            <p>
+                <span class="status green"></span> {{ report.pass }} {{ "passed"|t('super-images') }}
+                ·
+                <span class="status orange"></span> {{ report.warn }} {{ "warnings"|t('super-images') }}
+                ·
+                <span class="status red"></span> {{ report.fail }} {{ "failed"|t('super-images') }}
+            </p>
+        {% endif %}
     </div>
 
-    <table class="data fullwidth">
-        <thead>
-            <tr>
-                <th>{{ "Status"|t('super-images') }}</th>
-                <th>{{ "Check"|t('super-images') }}</th>
-                <th>{{ "Detail"|t('super-images') }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for check in checks %}
+    {% set groups = report.groups ?? [] %}
+    {% if groups is empty %}
+        <table class="data fullwidth">
+            <thead>
                 <tr>
-                    <td>
-                        {% switch check.status %}
-                            {% case 'pass' %}<span class="status green"></span> PASS
-                            {% case 'warn' %}<span class="status orange"></span> WARN
-                            {% case 'fail' %}<span class="status red"></span> FAIL
-                        {% endswitch %}
-                    </td>
-                    <td>{{ check.label }}</td>
-                    <td>{{ check.detail }}</td>
+                    <th>{{ "Status"|t('super-images') }}</th>
+                    <th>{{ "Check"|t('super-images') }}</th>
+                    <th>{{ "Detail"|t('super-images') }}</th>
                 </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <hr>
-    <h2>{{ "Optimizer binaries"|t('super-images') }}</h2>
-    <table class="data fullwidth">
-        <thead>
-            <tr>
-                <th>{{ "Tool"|t('super-images') }}</th>
-                <th>{{ "Configured"|t('super-images') }}</th>
-                <th>{{ "Resolved"|t('super-images') }}</th>
-                <th>{{ "Available"|t('super-images') }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for tool, row in binaries %}
-                <tr>
-                    <td><code>{{ tool }}</code></td>
-                    <td>{{ row.configured ?? '—' }}</td>
-                    <td>{{ row.resolved ?? '—' }}</td>
-                    <td>{{ row.available ? 'yes'|t('super-images') : 'no'|t('super-images') }}</td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                {% for check in checks %}
+                    <tr>
+                        <td>
+                            {% switch check.status %}
+                                {% case 'pass' %}<span class="status green"></span> PASS
+                                {% case 'warn' %}<span class="status orange"></span> WARN
+                                {% case 'fail' %}<span class="status red"></span> FAIL
+                            {% endswitch %}
+                        </td>
+                        <td>{{ check.label }}</td>
+                        <td>
+                            {{ check.detail }}
+                            {% if check.solution and check.status != 'pass' %}
+                                <div class="si-diag__solution">
+                                    <strong>{{ "Fix"|t('super-images') }}:</strong>
+                                    {{ check.solution }}
+                                </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        {% for group in groups %}
+            <h2>{{ group.label }}</h2>
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th style="width:6rem;">{{ "Status"|t('super-images') }}</th>
+                        <th style="width:12rem;">{{ "Check"|t('super-images') }}</th>
+                        <th>{{ "Detail / fix"|t('super-images') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for check in group.checks %}
+                        <tr>
+                            <td>
+                                {% switch check.status %}
+                                    {% case 'pass' %}<span class="status green"></span> PASS
+                                    {% case 'warn' %}<span class="status orange"></span> WARN
+                                    {% case 'fail' %}<span class="status red"></span> FAIL
+                                {% endswitch %}
+                            </td>
+                            <td><code>{{ check.label }}</code></td>
+                            <td>
+                                {{ check.detail }}
+                                {% if check.solution and check.status != 'pass' %}
+                                    <div class="si-diag__solution">
+                                        <strong>{{ "Fix"|t('super-images') }}:</strong>
+                                        {{ check.solution }}
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endfor %}
+    {% endif %}
 {% endblock %}

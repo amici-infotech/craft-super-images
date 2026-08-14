@@ -9,8 +9,8 @@ use yii\base\Component;
 /**
  * Resolves configured optimizer/encoder binary paths across environments.
  *
- * Prefer absolute paths (or env-driven paths) so macOS Homebrew and Ubuntu
- * system binaries can differ without changing tool selection.
+ * Prefer absolute paths (or env-driven paths) so Ubuntu hosts can pin
+ * `/usr/bin/...` binaries without relying on PATH alone.
  */
 final class BinaryResolver extends Component
 {

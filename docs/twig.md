@@ -2,6 +2,8 @@
 
 Normal template render **plans URLs only**. It must not process images, check derivative existence, or touch existence markers.
 
+Use the **variable API** only (`craft.superImages`). Twig filters are not provided.
+
 ---
 
 ## Variable API (`craft.superImages`)
@@ -20,12 +22,49 @@ Normal template render **plans URLs only**. It must not process images, check de
     sizes: '100vw'
 }) }}
 
-{# <picture> with format preference order #}
+{# Any extra HTML attributes (top-level or attrs bag) #}
+{{ craft.superImages.img(asset, {
+    variant: 'md',
+    format: 'webp',
+    id: 'hero-image',
+    class: 'hero__img',
+    fetchpriority: 'high',
+    'data-reveal': 'true',
+    attrs: {
+        width: 1200,
+        decoding: 'sync'
+    }
+}) }}
+
+{# <picture> with multi-width srcsets (all profile variants × formats) #}
 {{ craft.superImages.picture(asset, {
     profile: 'responsive',
-    variant: 'lg',
-    formats: ['avif', 'webp', 'jpg'],
+    formats: ['webp', 'jpg'],
     sizes: '(min-width: 992px) 992px, 100vw'
+}) }}
+
+{# pictureAttrs on <picture>, attrs on inner <img>, sourceAttrs on each <source> #}
+{{ craft.superImages.picture(asset, {
+    profile: 'responsive',
+    sizes: '100vw',
+    pictureAttrs: {
+        class: 'hero__picture',
+        'data-component': 'responsive-image'
+    },
+    class: 'hero__img',
+    alt: entry.title,
+    fetchpriority: 'high',
+    sourceAttrs: {
+        media: '(min-width: 0px)'
+    }
+}) }}
+
+{# Optional: limit variants, or set fallback <img src> variant #}
+{{ craft.superImages.picture(asset, {
+    profile: 'responsive',
+    variants: ['sm', 'md', 'lg', 'xl'],
+    variant: 'lg',
+    sizes: '100vw'
 }) }}
 
 {# srcset string for multiple variants #}
@@ -53,19 +92,6 @@ Normal template render **plans URLs only**. It must not process images, check de
 | Remote URL | `'https://cdn.example.com/hero.jpg'` |
 
 Local/remote sources use the same pipeline as Assets and must pass allow-lists in config.
-
----
-
-## Filters
-
-```twig
-{{ asset|generateUrl('webp', { variant: 'lg' }) }}
-{{ asset|generateImgTag('webp', { variant: 'md', class: 'thumb' }) }}
-{{ asset|generatePictureTag({ profile: 'responsive', sizes: '100vw' }) }}
-{{ asset|generatePictureTag(['avif', 'webp', 'jpg']) }}
-
-{{ '/images/hero.png'|generateUrl('jpg', { variant: 'sm' }) }}
-```
 
 ---
 

@@ -9,6 +9,7 @@
 namespace amici\SuperImages\controllers;
 
 use amici\SuperImages\Plugin;
+use amici\SuperImages\support\UbuntuInstallHints;
 use craft\web\Controller;
 use yii\web\Response;
 
@@ -28,18 +29,29 @@ class EncodersController extends Controller
 
         $driverRows = [];
         foreach ($plugin->getDriverManager()->all() as $driver) {
+            $name = $driver->name();
+            $available = $driver->isAvailable();
             $driverRows[] = [
-                'name' => $driver->name(),
-                'available' => $driver->isAvailable(),
+                'name' => $name,
+                'available' => $available,
                 'formats' => $driver->capabilities()->formats,
                 'operations' => $driver->capabilities()->operations,
+                'installHint' => $available ? null : UbuntuInstallHints::forDriver($name),
             ];
+        }
+
+        $binaryRows = [];
+        foreach ($plugin->getBinaryResolver()->inventory() as $tool => $row) {
+            $available = (bool) ($row['available'] ?? false);
+            $binaryRows[$tool] = array_merge($row, [
+                'installHint' => $available ? null : UbuntuInstallHints::forBinary($tool),
+            ]);
         }
 
         return $this->renderTemplate('super-images/encoders/index', [
             'settings' => $settings,
             'drivers' => $driverRows,
-            'binaries' => $plugin->getBinaryResolver()->inventory(),
+            'binaries' => $binaryRows,
             'operations' => $plugin->getOperationRegistry()->names(),
         ]);
     }

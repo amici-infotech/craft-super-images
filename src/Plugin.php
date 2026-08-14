@@ -12,7 +12,6 @@ namespace amici\SuperImages;
 
 use amici\SuperImages\base\PluginTrait;
 use amici\SuperImages\models\Settings;
-use amici\SuperImages\twig\SuperImagesTwigExtension;
 use amici\SuperImages\variables\SuperImagesVariable;
 use Craft;
 use craft\base\Model;
@@ -162,7 +161,7 @@ class Plugin extends CraftPlugin
     }
 
     /**
-     * Registers Twig variable + filters for delivery helpers.
+     * Registers the Twig variable (`craft.superImages`).
      */
     private function _registerTwig(): void
     {
@@ -175,8 +174,6 @@ class Plugin extends CraftPlugin
                 $variable->set('superImages', SuperImagesVariable::class);
             }
         );
-
-        Craft::$app->getView()->registerTwigExtension(new SuperImagesTwigExtension());
     }
 
     /**

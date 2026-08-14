@@ -8,7 +8,7 @@
 
 {% block content %}
     <div class="readable">
-        <p>{{ "Capability overview for image drivers, configured encoders, optimizer binaries, and registered operations."|t('super-images') }}</p>
+        <p>{{ "Capability overview for image drivers, configured encoders, and optimizer binaries. Install hints are Ubuntu apt commands."|t('super-images') }}</p>
     </div>
 
     <h2>{{ "Drivers"|t('super-images') }}</h2>
@@ -24,15 +24,45 @@
             {% for driver in drivers %}
                 <tr>
                     <td><code>{{ driver.name }}</code></td>
-                    <td>{{ driver.available ? 'yes'|t('super-images') : 'no'|t('super-images') }}</td>
-                    <td>{{ driver.formats|join(', ') }}</td>
+                    <td>
+                        {% if driver.available %}
+                            <span style="color:#3b7d3b;font-weight:600;">{{ "Yes"|t('super-images') }}</span>
+                        {% else %}
+                            <span style="color:#cf1124;font-weight:600;">{{ "No"|t('super-images') }}</span>
+                            {% if driver.installHint %}
+                                <span class="info">
+                                    <code>{{ driver.installHint.command }}</code>
+                                    {% if driver.installHint.notes %}
+                                        <br>{{ driver.installHint.notes }}
+                                    {% endif %}
+                                </span>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    <td>{{ driver.formats|join(', ') ?: '—' }}</td>
                 </tr>
             {% endfor %}
         </tbody>
     </table>
 
     <h2>{{ "Encoder config"|t('super-images') }}</h2>
-    <pre class="pane" style="overflow:auto;"><code>{{ settings.encoders|json_encode(constant('JSON_PRETTY_PRINT')) }}</code></pre>
+    <p class="light">{{ "Native driver encode options from config (quality, etc.)."|t('super-images') }}</p>
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ "Format"|t('super-images') }}</th>
+                <th>{{ "Options"|t('super-images') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for format, options in settings.encoders %}
+                <tr>
+                    <td><code>{{ format }}</code></td>
+                    <td><code>{{ options|json_encode }}</code></td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 
     <h2>{{ "Optimizer binaries"|t('super-images') }}</h2>
     <table class="data fullwidth">
@@ -50,7 +80,21 @@
                     <td><code>{{ tool }}</code></td>
                     <td>{{ row.configured ?? '—' }}</td>
                     <td>{{ row.resolved ?? '—' }}</td>
-                    <td>{{ row.available ? 'yes'|t('super-images') : 'no'|t('super-images') }}</td>
+                    <td>
+                        {% if row.available %}
+                            <span style="color:#3b7d3b;font-weight:600;">{{ "Yes"|t('super-images') }}</span>
+                        {% else %}
+                            <span style="color:#cf1124;font-weight:600;">{{ "No"|t('super-images') }}</span>
+                            {% if row.installHint %}
+                                <span class="info">
+                                    <code>{{ row.installHint.command }}</code>
+                                    {% if row.installHint.notes %}
+                                        <br>{{ row.installHint.notes }}
+                                    {% endif %}
+                                </span>
+                            {% endif %}
+                        {% endif %}
+                    </td>
                 </tr>
             {% endfor %}
         </tbody>

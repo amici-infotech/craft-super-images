@@ -6,97 +6,408 @@
     { label: "Super Images"|t('super-images'), url: cpUrl('super-images') },
 ] %}
 
+{% set adapterCount = (settings.storage.adapters ?? {})|length %}
+{% set profileCount = settings.profiles|length %}
+{% set binaryOk = 0 %}
+{% set binaryMissing = 0 %}
+{% for row in binaries %}
+    {% if row.available %}
+        {% set binaryOk = binaryOk + 1 %}
+    {% else %}
+        {% set binaryMissing = binaryMissing + 1 %}
+    {% endif %}
+{% endfor %}
+
+{% css %}
+.si-settings {
+    display: grid;
+    gap: 20px;
+}
+.si-settings__hero {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 16px 24px;
+    align-items: flex-start;
+    padding: 20px 22px;
+    border: 1px solid #e3e5e8;
+    border-radius: 8px;
+    background: #fff;
+}
+.si-settings__hero h2 {
+    margin: 0 0 6px;
+}
+.si-settings__hero p {
+    margin: 0;
+    color: #6c757d;
+    max-width: 46rem;
+}
+.si-settings__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.si-settings__metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+}
+.si-settings__metric {
+    border: 1px solid #e3e5e8;
+    border-radius: 8px;
+    background: #fff;
+    padding: 16px 18px;
+}
+.si-settings__metric-label {
+    display: block;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #6c757d;
+    margin-bottom: 8px;
+}
+.si-settings__metric-value {
+    display: block;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.si-settings__metric-meta {
+    display: block;
+    margin-top: 6px;
+    color: #6c757d;
+    font-size: 12px;
+}
+.si-settings__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+}
+.si-settings__panel {
+    border: 1px solid #e3e5e8;
+    border-radius: 8px;
+    background: #fff;
+    padding: 18px 20px;
+}
+.si-settings__panel h3 {
+    margin: 0 0 14px;
+    font-size: 15px;
+}
+.si-settings__rows {
+    display: grid;
+    gap: 10px;
+}
+.si-settings__row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: baseline;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0f1f3;
+}
+.si-settings__row:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+.si-settings__row dt {
+    margin: 0;
+    color: #6c757d;
+}
+.si-settings__row dd {
+    margin: 0;
+    font-weight: 600;
+    text-align: right;
+}
+.si-settings__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f3f5f7;
+    color: #3f4d5a;
+}
+.si-settings__chip--ok {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+.si-settings__chip--warn {
+    background: #fff8e1;
+    color: #b26a00;
+}
+.si-settings__chip--off {
+    background: #fdecea;
+    color: #c62828;
+}
+.si-settings__note {
+    border: 1px solid #d9e8fb;
+    background: #f4f9ff;
+    border-radius: 8px;
+    padding: 14px 16px;
+}
+.si-settings__note code {
+    white-space: nowrap;
+}
+{% endcss %}
+
 {% block content %}
-    <div class="pane" style="margin-bottom: 24px; padding: 12px 16px;">
-        <strong>{{ "PHP config is the source of truth."|t('super-images') }}</strong>
-        {{ "Edit `config/super-images.php` (see `config/super-images.example.php`). This page is a read-only overview of the effective Settings model."|t('super-images') }}
+    <div class="si-settings">
+        <section class="si-settings__hero">
+            <div>
+                <h2>{{ "Configuration overview"|t('super-images') }}</h2>
+                <p>
+                    {{ "PHP config is the source of truth. Edit"|t('super-images') }}
+                    <code>config/super-images.php</code>
+                    {{ "to change values — this page shows what Craft currently has loaded."|t('super-images') }}
+                </p>
+            </div>
+            <div class="si-settings__actions">
+                <a class="btn" href="{{ cpUrl('super-images/encoders') }}">{{ "Encoders & Optimizers"|t('super-images') }}</a>
+                <a class="btn" href="{{ cpUrl('super-images/diagnostics') }}">{{ "Diagnostics"|t('super-images') }}</a>
+                <a class="btn" href="{{ cpUrl('super-images/playground') }}">{{ "Playground"|t('super-images') }}</a>
+            </div>
+        </section>
+
+        <section class="si-settings__note">
+            <strong>{{ "Tip"|t('super-images') }}:</strong>
+            {{ "After editing the config file, clear caches if values look stale. Secrets and binary paths should come from `.env`."|t('super-images') }}
+        </section>
+
+        <section class="si-settings__metrics">
+            <div class="si-settings__metric">
+                <span class="si-settings__metric-label">{{ "Plugin"|t('super-images') }}</span>
+                <span class="si-settings__metric-value" style="color: {{ settings.enabled ? '#2e7d32' : '#c62828' }};">
+                    {{ settings.enabled ? 'Enabled'|t('super-images') : 'Disabled'|t('super-images') }}
+                </span>
+            </div>
+            <div class="si-settings__metric">
+                <span class="si-settings__metric-label">{{ "Delivery"|t('super-images') }}</span>
+                <span class="si-settings__metric-value">{{ settings.delivery.mode ?? 'lazy' }}</span>
+                <span class="si-settings__metric-meta">{{ "driver"|t('super-images') }}: {{ settings.driver }}</span>
+            </div>
+            <div class="si-settings__metric">
+                <span class="si-settings__metric-label">{{ "Profiles"|t('super-images') }}</span>
+                <span class="si-settings__metric-value">{{ profileCount }}</span>
+                <span class="si-settings__metric-meta">{{ "default"|t('super-images') }}: {{ settings.defaultProfile }} / {{ settings.defaultFormat }}</span>
+            </div>
+            <div class="si-settings__metric">
+                <span class="si-settings__metric-label">{{ "Storage adapters"|t('super-images') }}</span>
+                <span class="si-settings__metric-value">{{ adapterCount }}</span>
+                <span class="si-settings__metric-meta">{{ "default"|t('super-images') }}: {{ settings.storage.default ?? 'local' }}</span>
+            </div>
+            <div class="si-settings__metric">
+                <span class="si-settings__metric-label">{{ "Optimizer binaries"|t('super-images') }}</span>
+                <span class="si-settings__metric-value">{{ binaryOk }}/{{ binaryOk + binaryMissing }}</span>
+                <span class="si-settings__metric-meta">
+                    {% if binaryMissing %}
+                        <span class="si-settings__chip si-settings__chip--warn">{{ binaryMissing }} {{ "missing"|t('super-images') }}</span>
+                    {% else %}
+                        <span class="si-settings__chip si-settings__chip--ok">{{ "all found"|t('super-images') }}</span>
+                    {% endif %}
+                </span>
+            </div>
+        </section>
+
+        <section class="si-settings__grid">
+            <div class="si-settings__panel">
+                <h3>{{ "General"|t('super-images') }}</h3>
+                <dl class="si-settings__rows">
+                    <div class="si-settings__row">
+                        <dt>{{ "Enabled"|t('super-images') }}</dt>
+                        <dd>
+                            {% if settings.enabled %}
+                                <span class="si-settings__chip si-settings__chip--ok">{{ "Yes"|t('super-images') }}</span>
+                            {% else %}
+                                <span class="si-settings__chip si-settings__chip--off">{{ "No"|t('super-images') }}</span>
+                            {% endif %}
+                        </dd>
+                    </div>
+                    <div class="si-settings__row">
+                        <dt>{{ "Default profile"|t('super-images') }}</dt>
+                        <dd><code>{{ settings.defaultProfile }}</code></dd>
+                    </div>
+                    <div class="si-settings__row">
+                        <dt>{{ "Default format"|t('super-images') }}</dt>
+                        <dd><code>{{ settings.defaultFormat }}</code></dd>
+                    </div>
+                    <div class="si-settings__row">
+                        <dt>{{ "Driver"|t('super-images') }}</dt>
+                        <dd><code>{{ settings.driver }}</code></dd>
+                    </div>
+                    <div class="si-settings__row">
+                        <dt>{{ "Delivery mode"|t('super-images') }}</dt>
+                        <dd><code>{{ settings.delivery.mode ?? 'lazy' }}</code></dd>
+                    </div>
+                </dl>
+            </div>
+
+            <div class="si-settings__panel">
+                <h3>{{ "Auto-generate"|t('super-images') }}</h3>
+                <dl class="si-settings__rows">
+                    <div class="si-settings__row">
+                        <dt>{{ "Enabled"|t('super-images') }}</dt>
+                        <dd>{{ (settings.autoGenerate.enabled ?? true) ? 'yes'|t('super-images') : 'no'|t('super-images') }}</dd>
+                    </div>
+                    <div class="si-settings__row">
+                        <dt>{{ "On upload"|t('super-images') }}</dt>
+                        <dd>{{ (settings.autoGenerate.onUpload ?? true) ? 'yes'|t('super-images') : 'no'|t('super-images') }}</dd>
+                    </div>
+                    <div class="si-settings__row">
+                        <dt>{{ "On replace"|t('super-images') }}</dt>
+                        <dd>{{ (settings.autoGenerate.onReplace ?? true) ? 'yes'|t('super-images') : 'no'|t('super-images') }}</dd>
+                    </div>
+                    <div class="si-settings__row">
+                        <dt>{{ "Queue jobs"|t('super-images') }}</dt>
+                        <dd>{{ (settings.autoGenerate.queue ?? true) ? 'yes'|t('super-images') : 'no'|t('super-images') }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <div class="si-settings__panel">
+                <h3>{{ "Cleanup"|t('super-images') }}</h3>
+                <dl class="si-settings__rows">
+                    <div class="si-settings__row">
+                        <dt>{{ "Preview retention"|t('super-images') }}</dt>
+                        <dd>{{ settings.cleanup.previewRetentionDays ?? 2 }} {{ "days"|t('super-images') }}</dd>
+                    </div>
+                    <div class="si-settings__row">
+                        <dt>{{ "Obsolete retention"|t('super-images') }}</dt>
+                        <dd>{{ settings.cleanup.obsoleteRetentionDays ?? 30 }} {{ "days"|t('super-images') }}</dd>
+                    </div>
+                    <div class="si-settings__row">
+                        <dt>{{ "Remote scan"|t('super-images') }}</dt>
+                        <dd>{{ (settings.cleanup.allowRemoteScan ?? false) ? 'yes'|t('super-images') : 'no'|t('super-images') }}</dd>
+                    </div>
+                </dl>
+            </div>
+        </section>
+
+        <section class="si-settings__panel">
+            <h3>{{ "Storage adapters"|t('super-images') }}</h3>
+            <p class="light" style="margin-top:0;">
+                {{ "Markers"|t('super-images') }}:
+                {{ (settings.storage.markers.enabled ?? true) ? 'enabled'|t('super-images') : 'disabled'|t('super-images') }}
+                · <code>{{ settings.storage.markers.path ?? '' }}</code>
+            </p>
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th>{{ "Adapter"|t('super-images') }}</th>
+                        <th>{{ "Type"|t('super-images') }}</th>
+                        <th>{{ "Path / bucket"|t('super-images') }}</th>
+                        <th>{{ "Default"|t('super-images') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for name, adapter in settings.storage.adapters ?? {} %}
+                        <tr>
+                            <td><code>{{ name }}</code></td>
+                            <td>{{ adapter.type ?? 'local' }}</td>
+                            <td><code>{{ adapter.path ?? adapter.bucket ?? '—' }}</code></td>
+                            <td>
+                                {% if name == (settings.storage.default ?? 'local') %}
+                                    <span class="si-settings__chip si-settings__chip--ok">{{ "Default"|t('super-images') }}</span>
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <section class="si-settings__panel">
+            <h3>{{ "Profiles"|t('super-images') }}</h3>
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th>{{ "Profile"|t('super-images') }}</th>
+                        <th>{{ "Formats"|t('super-images') }}</th>
+                        <th>{{ "Variants"|t('super-images') }}</th>
+                        <th>{{ "Units"|t('super-images') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for handle, profile in settings.profiles %}
+                        {% set formats = profile.formats ?? [] %}
+                        {% set variants = profile.variants ?? {} %}
+                        <tr>
+                            <td>
+                                <code>{{ handle }}</code>
+                                {% if handle == settings.defaultProfile %}
+                                    <span class="si-settings__chip si-settings__chip--ok">{{ "Default"|t('super-images') }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ formats|join(', ') }}</td>
+                            <td>{{ variants|keys|join(', ') }}</td>
+                            <td>{{ formats|length * variants|length }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <section class="si-settings__grid">
+            <div class="si-settings__panel">
+                <h3>{{ "Encoders"|t('super-images') }}</h3>
+                <table class="data fullwidth">
+                    <thead>
+                        <tr>
+                            <th>{{ "Format"|t('super-images') }}</th>
+                            <th>{{ "Options"|t('super-images') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for format, options in settings.encoders %}
+                            <tr>
+                                <td><code>{{ format }}</code></td>
+                                <td><code>{{ options|json_encode }}</code></td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="si-settings__panel">
+                <h3>
+                    {{ "Optimizers"|t('super-images') }}
+                    {% if settings.optimizers.enabled ?? true %}
+                        <span class="si-settings__chip si-settings__chip--ok">{{ "Enabled"|t('super-images') }}</span>
+                    {% else %}
+                        <span class="si-settings__chip si-settings__chip--off">{{ "Disabled"|t('super-images') }}</span>
+                    {% endif %}
+                </h3>
+                <table class="data fullwidth">
+                    <thead>
+                        <tr>
+                            <th>{{ "Tool"|t('super-images') }}</th>
+                            <th>{{ "Resolved"|t('super-images') }}</th>
+                            <th>{{ "Available"|t('super-images') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tool, row in binaries %}
+                            <tr>
+                                <td><code>{{ tool }}</code></td>
+                                <td>{{ row.resolved ?? '—' }}</td>
+                                <td>
+                                    {% if row.available %}
+                                        <span style="color:#2e7d32;font-weight:600;">{{ "Yes"|t('super-images') }}</span>
+                                    {% else %}
+                                        <span style="color:#c62828;font-weight:600;">{{ "No"|t('super-images') }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <p style="margin:12px 0 0;">
+                    <a href="{{ cpUrl('super-images/encoders') }}">{{ "View install hints →"|t('super-images') }}</a>
+                </p>
+            </div>
+        </section>
     </div>
-
-    <h2>{{ "General"|t('super-images') }}</h2>
-    <ul class="padded">
-        <li>{{ "Enabled"|t('super-images') }}: {{ settings.enabled ? 'yes'|t('super-images') : 'no'|t('super-images') }}</li>
-        <li>{{ "Default profile"|t('super-images') }}: {{ settings.defaultProfile }}</li>
-        <li>{{ "Default format"|t('super-images') }}: {{ settings.defaultFormat }}</li>
-        <li>{{ "Driver"|t('super-images') }}: {{ settings.driver }}</li>
-        <li>{{ "Delivery mode"|t('super-images') }}: {{ settings.delivery.mode ?? 'lazy' }}</li>
-    </ul>
-
-    <h2>{{ "Storage"|t('super-images') }}</h2>
-    <ul class="padded">
-        <li>{{ "Default adapter"|t('super-images') }}: {{ settings.storage.default ?? 'local' }}</li>
-        <li>{{ "Markers"|t('super-images') }}: {{ (settings.storage.markers.enabled ?? true) ? 'enabled'|t('super-images') : 'disabled'|t('super-images') }} · {{ settings.storage.markers.path ?? '' }}</li>
-    </ul>
-    <table class="data fullwidth">
-        <thead>
-            <tr>
-                <th>{{ "Adapter"|t('super-images') }}</th>
-                <th>{{ "Type"|t('super-images') }}</th>
-                <th>{{ "Path / config"|t('super-images') }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for name, adapter in settings.storage.adapters ?? {} %}
-                <tr>
-                    <td><code>{{ name }}</code></td>
-                    <td>{{ adapter.type ?? 'local' }}</td>
-                    <td><code>{{ adapter.path ?? adapter.bucket ?? '—' }}</code></td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <h2>{{ "Profiles"|t('super-images') }}</h2>
-    <table class="data fullwidth">
-        <thead>
-            <tr>
-                <th>{{ "Profile"|t('super-images') }}</th>
-                <th>{{ "Formats"|t('super-images') }}</th>
-                <th>{{ "Variants"|t('super-images') }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for handle, profile in settings.profiles %}
-                <tr>
-                    <td><code>{{ handle }}</code></td>
-                    <td>{{ (profile.formats ?? [])|join(', ') }}</td>
-                    <td>{{ (profile.variants ?? {})|keys|join(', ') }}</td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <h2>{{ "Encoders"|t('super-images') }}</h2>
-    <pre class="pane" style="overflow:auto;"><code>{{ settings.encoders|json_encode(constant('JSON_PRETTY_PRINT')) }}</code></pre>
-
-    <h2>{{ "Optimizers"|t('super-images') }}</h2>
-    <ul class="padded">
-        <li>{{ "Enabled"|t('super-images') }}: {{ (settings.optimizers.enabled ?? true) ? 'yes'|t('super-images') : 'no'|t('super-images') }}</li>
-    </ul>
-    <table class="data fullwidth">
-        <thead>
-            <tr>
-                <th>{{ "Tool"|t('super-images') }}</th>
-                <th>{{ "Configured"|t('super-images') }}</th>
-                <th>{{ "Resolved"|t('super-images') }}</th>
-                <th>{{ "Available"|t('super-images') }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for tool, row in binaries %}
-                <tr>
-                    <td><code>{{ tool }}</code></td>
-                    <td>{{ row.configured ?? '—' }}</td>
-                    <td>{{ row.resolved ?? '—' }}</td>
-                    <td>{{ row.available ? 'yes'|t('super-images') : 'no'|t('super-images') }}</td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <h2>{{ "Cleanup"|t('super-images') }}</h2>
-    <ul class="padded">
-        <li>{{ "Preview retention (days)"|t('super-images') }}: {{ settings.cleanup.previewRetentionDays ?? 2 }}</li>
-        <li>{{ "Obsolete retention (days)"|t('super-images') }}: {{ settings.cleanup.obsoleteRetentionDays ?? 30 }}</li>
-        <li>{{ "Allow remote scan"|t('super-images') }}: {{ (settings.cleanup.allowRemoteScan ?? false) ? 'yes'|t('super-images') : 'no'|t('super-images') }}</li>
-    </ul>
 {% endblock %}

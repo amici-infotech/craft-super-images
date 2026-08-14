@@ -8,9 +8,16 @@ There is **no** GeneratedImage database table. Cleanup is conservative and expli
 
 ```bash
 php craft super-images/doctor
+php craft super-images/doctor --json=1
 ```
 
-Checks include:
+Output is grouped into sections:
+
+```text
+Core · Drivers · Optimizers · Storage & paths · Delivery · Queue
+```
+
+Each optimizer binary is listed on its own line with the resolved path (and which format uses it, when assigned). Use `--json=1` for machine-readable output.
 
 - plugin enabled
 - GD / Imagick / Libvips availability

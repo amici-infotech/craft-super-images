@@ -9,6 +9,7 @@
 namespace amici\SuperImages\services;
 
 use amici\SuperImages\Plugin;
+use amici\SuperImages\support\UbuntuInstallHints;
 use Craft;
 use yii\base\Component;
 
@@ -17,10 +18,34 @@ use yii\base\Component;
  */
 class DiagnosticsService extends Component
 {
+    public const GROUP_CORE = 'core';
+    public const GROUP_DRIVERS = 'drivers';
+    public const GROUP_OPTIMIZERS = 'optimizers';
+    public const GROUP_STORAGE = 'storage';
+    public const GROUP_DELIVERY = 'delivery';
+    public const GROUP_QUEUE = 'queue';
+
+    /**
+     * Ordered group labels for doctor output.
+     *
+     * @return array<string, string>
+     */
+    public function doctorGroups(): array
+    {
+        return [
+            self::GROUP_CORE => 'Core',
+            self::GROUP_DRIVERS => 'Drivers',
+            self::GROUP_OPTIMIZERS => 'Optimizers',
+            self::GROUP_STORAGE => 'Storage & paths',
+            self::GROUP_DELIVERY => 'Delivery',
+            self::GROUP_QUEUE => 'Queue',
+        ];
+    }
+
     /**
      * Run doctor checks.
      *
-     * @return list<array{id: string, status: 'pass'|'warn'|'fail', label: string, detail: string}>
+     * @return list<array{id: string, group: string, status: 'pass'|'warn'|'fail', label: string, detail: string, solution: ?string}>
      */
     public function runDoctor(): array
     {
@@ -30,12 +55,23 @@ class DiagnosticsService extends Component
 
         $checks[] = $this->check(
             'enabled',
+            self::GROUP_CORE,
             $settings->enabled ? 'pass' : 'fail',
             'Plugin enabled',
             $settings->enabled
                 ? 'Super Images is enabled.'
                 : 'Super Images is disabled in config.',
+            $settings->enabled
+                ? null
+                : 'Set `enabled => true` in `config/super-images.php`, then clear caches.',
         );
+
+        $selectedName = null;
+        try {
+            $selectedName = $plugin->getDriverManager()->select($settings->driver)->name();
+        } catch (\Throwable) {
+            $selectedName = null;
+        }
 
         foreach (['gd', 'imagick', 'libvips'] as $driverName) {
             $driver = null;
@@ -47,13 +83,19 @@ class DiagnosticsService extends Component
             }
 
             $available = $driver !== null && $driver->isAvailable();
+            $label = strtoupper($driverName) === 'GD' ? 'GD' : ucfirst($driverName);
+            $detail = $available ? 'Available' : 'Not available on this host';
+            if ($available && $selectedName === $driverName) {
+                $detail .= ' · selected';
+            }
+
             $checks[] = $this->check(
                 'driver-' . $driverName,
+                self::GROUP_DRIVERS,
                 $available ? 'pass' : 'warn',
-                sprintf('%s driver', ucfirst($driverName)),
-                $available
-                    ? sprintf('%s is available.', ucfirst($driverName))
-                    : sprintf('%s is not available on this host.', ucfirst($driverName)),
+                $label,
+                $detail,
+                $available ? null : $this->formatInstallHint(UbuntuInstallHints::forDriver($driverName)),
             );
         }
 
@@ -62,57 +104,109 @@ class DiagnosticsService extends Component
             $formats = $selected->capabilities()->formats;
             $checks[] = $this->check(
                 'formats',
+                self::GROUP_DRIVERS,
                 $formats !== [] ? 'pass' : 'fail',
-                'Selected driver formats',
-                sprintf(
-                    'Driver "%s" reports: %s',
-                    $selected->name(),
-                    $formats !== [] ? implode(', ', $formats) : '(none)',
-                ),
+                'Encode formats',
+                $formats !== []
+                    ? sprintf('%s → %s', $selected->name(), implode(', ', $formats))
+                    : sprintf('%s reports no formats', $selected->name()),
+                $formats !== []
+                    ? null
+                    : 'Install/enable an image driver (php-gd, php-imagick, or libvips) and set `driver` in config.',
             );
         } catch (\Throwable $exception) {
             $checks[] = $this->check(
                 'formats',
+                self::GROUP_DRIVERS,
                 'fail',
-                'Selected driver formats',
+                'Encode formats',
                 $exception->getMessage(),
+                'Install at least one driver (`sudo apt-get install -y php-gd`) and restart PHP-FPM. Prefer `driver => \'auto\'`.',
             );
         }
 
-        $inventory = $plugin->getBinaryResolver()->inventory();
-        $availableBinaries = array_filter($inventory, static fn(array $row): bool => $row['available']);
-        $missingBinaries = array_filter($inventory, static fn(array $row): bool => !$row['available']);
         $optimizersEnabled = (bool) ($settings->optimizers['enabled'] ?? true);
-
         if (!$optimizersEnabled) {
             $checks[] = $this->check(
-                'optimizer-binaries',
+                'optimizers-enabled',
+                self::GROUP_OPTIMIZERS,
                 'pass',
-                'Optimizer binaries',
-                'Optimizers are disabled in config.',
-            );
-        } elseif ($availableBinaries === []) {
-            $checks[] = $this->check(
-                'optimizer-binaries',
-                'warn',
-                'Optimizer binaries',
-                'No configured optimizer binaries were found on PATH.',
+                'Optimizers',
+                'Disabled in config (native encode only).',
             );
         } else {
-            $detail = sprintf(
-                '%d available (%s)',
-                count($availableBinaries),
-                implode(', ', array_keys($availableBinaries)),
-            );
-            if ($missingBinaries !== []) {
-                $detail .= sprintf('; missing: %s', implode(', ', array_keys($missingBinaries)));
+            $inventory = $plugin->getBinaryResolver()->inventory();
+            $formatTools = [];
+            foreach (['jpeg', 'png', 'webp', 'avif'] as $format) {
+                [$tool] = $plugin->getOptimizerManager()->normalizeToolConfig(
+                    $settings->optimizers[$format] ?? null,
+                );
+                if ($tool !== null) {
+                    $formatTools[$tool] = $format;
+                }
             }
-            $checks[] = $this->check(
-                'optimizer-binaries',
-                $missingBinaries === [] ? 'pass' : 'warn',
-                'Optimizer binaries',
-                $detail,
-            );
+
+            foreach ($inventory as $tool => $row) {
+                $configured = $row['configured'] ?? null;
+                $resolved = $row['resolved'] ?? null;
+                $available = (bool) ($row['available'] ?? false);
+                $assigned = $formatTools[$tool] ?? null;
+
+                if ($available) {
+                    $detail = (string) $resolved;
+                    if (
+                        is_string($configured)
+                        && $configured !== ''
+                        && $configured !== $resolved
+                        && $configured !== $tool
+                    ) {
+                        $detail .= sprintf(' (config: %s)', $configured);
+                    }
+                    if ($assigned !== null) {
+                        $detail .= sprintf(' · used for %s', $assigned);
+                    }
+                    $checks[] = $this->check(
+                        'binary-' . $tool,
+                        self::GROUP_OPTIMIZERS,
+                        'pass',
+                        $tool,
+                        $detail,
+                    );
+                } else {
+                    $detail = 'Not found';
+                    if (
+                        is_string($configured)
+                        && $configured !== ''
+                        && $configured !== $tool
+                    ) {
+                        $detail .= sprintf(' (config: %s)', $configured);
+                    }
+                    if ($assigned !== null) {
+                        $detail .= sprintf(' · configured for %s', $assigned);
+                    }
+
+                    $solution = $this->formatInstallHint(UbuntuInstallHints::forBinary($tool));
+                    if ($assigned !== null && $solution !== null) {
+                        $solution .= sprintf(
+                            ' Then set `optimizers.binaries[\'%s\']` (or SUPER_IMAGES_%s) to the binary path, e.g. /usr/bin/%s.',
+                            $tool,
+                            strtoupper($tool),
+                            $tool,
+                        );
+                    } elseif ($assigned === null && $solution !== null) {
+                        $solution .= ' Optional until assigned to a format in `optimizers`.';
+                    }
+
+                    $checks[] = $this->check(
+                        'binary-' . $tool,
+                        self::GROUP_OPTIMIZERS,
+                        'warn',
+                        $tool,
+                        $detail,
+                        $solution,
+                    );
+                }
+            }
         }
 
         $storageDefault = (string) ($settings->storage['default'] ?? 'local');
@@ -120,29 +214,36 @@ class DiagnosticsService extends Component
         if (!is_array($adapterConfig)) {
             $checks[] = $this->check(
                 'storage-writable',
+                self::GROUP_STORAGE,
                 'fail',
-                'Local storage writable',
-                sprintf('Default storage adapter "%s" is not configured.', $storageDefault),
+                'Derivative storage',
+                sprintf('Default adapter "%s" is not configured.', $storageDefault),
+                'Add the adapter under `storage.adapters` in `config/super-images.php`, or change `storage.default`.',
             );
         } else {
             $type = (string) ($adapterConfig['type'] ?? 'local');
             if ($type !== 'local') {
                 $checks[] = $this->check(
                     'storage-writable',
+                    self::GROUP_STORAGE,
                     'pass',
-                    'Local storage writable',
-                    sprintf('Default adapter "%s" is remote (%s); local write check skipped.', $storageDefault, $type),
+                    'Derivative storage',
+                    sprintf('Default adapter "%s" (%s) — local write check skipped.', $storageDefault, $type),
                 );
             } else {
                 $root = (string) Craft::getAlias((string) ($adapterConfig['path'] ?? '@webroot/uploads/super-images'));
                 $writable = $this->ensureWritableDirectory($root);
                 $checks[] = $this->check(
                     'storage-writable',
+                    self::GROUP_STORAGE,
                     $writable ? 'pass' : 'fail',
-                    'Local storage writable',
+                    'Derivative storage',
                     $writable
-                        ? sprintf('Writable: %s', $root)
+                        ? $root
                         : sprintf('Not writable: %s', $root),
+                    $writable
+                        ? null
+                        : sprintf('Create the directory and grant write access to the PHP user, e.g. `sudo mkdir -p %s && sudo chown -R www-data:www-data %s`.', $root, $root),
                 );
             }
         }
@@ -153,19 +254,24 @@ class DiagnosticsService extends Component
         if (!$markersEnabled) {
             $checks[] = $this->check(
                 'markers-path',
+                self::GROUP_STORAGE,
                 'pass',
-                'Markers path',
-                'Existence markers are disabled.',
+                'Existence markers',
+                'Disabled in config.',
             );
         } else {
             $writable = $this->ensureWritableDirectory($markerPath);
             $checks[] = $this->check(
                 'markers-path',
+                self::GROUP_STORAGE,
                 $writable ? 'pass' : 'fail',
-                'Markers path',
+                'Existence markers',
                 $writable
-                    ? sprintf('Writable: %s', $markerPath)
+                    ? $markerPath
                     : sprintf('Not writable: %s', $markerPath),
+                $writable
+                    ? null
+                    : sprintf('Ensure Craft storage is writable: `sudo chown -R www-data:www-data %s`.', dirname($markerPath)),
             );
         }
 
@@ -173,11 +279,15 @@ class DiagnosticsService extends Component
         $tempWritable = is_dir($tempPath) && is_writable($tempPath);
         $checks[] = $this->check(
             'temp-writable',
+            self::GROUP_STORAGE,
             $tempWritable ? 'pass' : 'fail',
-            'Temp directory writable',
+            'Temp directory',
             $tempWritable
-                ? sprintf('Writable: %s', $tempPath)
+                ? $tempPath
                 : sprintf('Not writable: %s', $tempPath),
+            $tempWritable
+                ? null
+                : sprintf('Fix permissions on Craft runtime temp: `sudo chown -R www-data:www-data %s`.', $tempPath),
         );
 
         $deliveryMode = (string) ($settings->delivery['mode'] ?? 'lazy');
@@ -186,60 +296,84 @@ class DiagnosticsService extends Component
         $hasSigning = is_string($signingSecret) && $signingSecret !== ''
             || Craft::$app->getConfig()->getGeneral()->securityKey !== '';
 
+        $checks[] = $this->check(
+            'delivery-mode',
+            self::GROUP_DELIVERY,
+            in_array($deliveryMode, ['eager', 'lazy', 'hybrid'], true) ? 'pass' : 'fail',
+            'Mode',
+            $deliveryMode,
+            in_array($deliveryMode, ['eager', 'lazy', 'hybrid'], true)
+                ? null
+                : 'Set `delivery.mode` to `lazy`, `eager`, or `hybrid` in `config/super-images.php`.',
+        );
+
         if (in_array($deliveryMode, ['lazy', 'hybrid'], true)) {
             if (!$runtimeEnabled) {
                 $checks[] = $this->check(
                     'runtime-signing',
+                    self::GROUP_DELIVERY,
                     'fail',
                     'Runtime signing',
-                    sprintf('Delivery mode is "%s" but runtime generation is disabled.', $deliveryMode),
+                    sprintf('Required for "%s" mode, but runtime generation is disabled.', $deliveryMode),
+                    'Set `runtime.enabled => true`, or switch `delivery.mode` to `eager` and pre-generate via CLI/queue.',
                 );
             } elseif (!$hasSigning) {
                 $checks[] = $this->check(
                     'runtime-signing',
+                    self::GROUP_DELIVERY,
                     'fail',
                     'Runtime signing',
-                    'No signing secret or Craft security key is available for signed URLs.',
+                    'No signing secret or Craft security key available.',
+                    'Set `SUPER_IMAGES_SIGNING_SECRET` / `runtime.signingSecret`, or ensure Craft `securityKey` is configured.',
                 );
             } else {
+                $source = is_string($signingSecret) && $signingSecret !== ''
+                    ? 'config signingSecret'
+                    : 'Craft securityKey';
                 $checks[] = $this->check(
                     'runtime-signing',
+                    self::GROUP_DELIVERY,
                     'pass',
                     'Runtime signing',
-                    sprintf('Delivery mode "%s" with runtime signing available.', $deliveryMode),
+                    sprintf('Ready (%s)', $source),
                 );
             }
         } else {
             $checks[] = $this->check(
                 'runtime-signing',
+                self::GROUP_DELIVERY,
                 'pass',
                 'Runtime signing',
-                sprintf('Delivery mode is "%s" (eager storage URLs).', $deliveryMode),
+                'Not required for eager mode.',
             );
         }
-
-        $checks[] = $this->check(
-            'delivery-mode',
-            in_array($deliveryMode, ['eager', 'lazy', 'hybrid'], true) ? 'pass' : 'fail',
-            'Delivery mode',
-            sprintf('Configured delivery mode: %s', $deliveryMode),
-        );
 
         $queue = $this->queueCounts();
         if ($queue['available'] === false) {
             $checks[] = $this->check(
                 'queue-counts',
+                self::GROUP_QUEUE,
                 'warn',
-                'Queue counts',
+                'Craft queue',
                 'Queue table is not available.',
+                'Run pending Craft migrations (`php craft migrate/all`) so the queue table exists.',
             );
         } else {
             $status = $queue['failed'] > 0 ? 'warn' : 'pass';
             $checks[] = $this->check(
                 'queue-counts',
+                self::GROUP_QUEUE,
                 $status,
-                'Queue counts',
-                sprintf('Pending: %d · Failed: %d · Reserved: %d', $queue['pending'], $queue['failed'], $queue['reserved']),
+                'Craft queue',
+                sprintf(
+                    'pending %d · failed %d · reserved %d',
+                    $queue['pending'],
+                    $queue['failed'],
+                    $queue['reserved'],
+                ),
+                $queue['failed'] > 0
+                    ? 'Open Utilities → Queue, inspect failed Super Images jobs, fix the error, then retry or delete them. Keep `php craft queue/listen` running in production.'
+                    : null,
             );
         }
 
@@ -247,15 +381,30 @@ class DiagnosticsService extends Component
     }
 
     /**
-     * Compact summary for the CP dashboard.
+     * Grouped doctor report for CLI/CP rendering.
      *
-     * @return array<string, mixed>
+     * @return array{
+     *     groups: list<array{id: string, label: string, checks: list<array{id: string, group: string, status: 'pass'|'warn'|'fail', label: string, detail: string, solution: ?string}>}>,
+     *     summary: array{pass: int, warn: int, fail: int, total: int}
+     * }
      */
-    public function dashboardSummary(): array
+    public function doctorReport(): array
     {
-        $plugin = Plugin::getInstance();
-        $settings = $plugin->getSettings();
         $checks = $this->runDoctor();
+        $labels = $this->doctorGroups();
+        $grouped = [];
+
+        foreach (array_keys($labels) as $groupId) {
+            $grouped[$groupId] = [];
+        }
+
+        foreach ($checks as $check) {
+            $groupId = $check['group'] ?? self::GROUP_CORE;
+            if (!isset($grouped[$groupId])) {
+                $grouped[$groupId] = [];
+            }
+            $grouped[$groupId][] = $check;
+        }
 
         $pass = 0;
         $warn = 0;
@@ -269,6 +418,47 @@ class DiagnosticsService extends Component
                     throw new \UnhandledMatchError($status);
                 })($check['status']),
             };
+        }
+
+        $groups = [];
+        foreach ($grouped as $groupId => $groupChecks) {
+            if ($groupChecks === []) {
+                continue;
+            }
+
+            $groups[] = [
+                'id' => $groupId,
+                'label' => $labels[$groupId] ?? ucfirst($groupId),
+                'checks' => $groupChecks,
+            ];
+        }
+
+        return [
+            'groups' => $groups,
+            'summary' => [
+                'pass' => $pass,
+                'warn' => $warn,
+                'fail' => $fail,
+                'total' => count($checks),
+            ],
+        ];
+    }
+
+    /**
+     * Compact summary for the CP dashboard.
+     *
+     * @return array<string, mixed>
+     */
+    public function dashboardSummary(): array
+    {
+        $plugin = Plugin::getInstance();
+        $settings = $plugin->getSettings();
+        $report = $this->doctorReport();
+        $checks = [];
+        foreach ($report['groups'] as $group) {
+            foreach ($group['checks'] as $check) {
+                $checks[] = $check;
+            }
         }
 
         $selectedDriver = null;
@@ -288,10 +478,11 @@ class DiagnosticsService extends Component
             'storageDefault' => $settings->storage['default'] ?? 'local',
             'profileCount' => count($settings->profiles),
             'doctor' => [
-                'pass' => $pass,
-                'warn' => $warn,
-                'fail' => $fail,
+                'pass' => $report['summary']['pass'],
+                'warn' => $report['summary']['warn'],
+                'fail' => $report['summary']['fail'],
                 'checks' => $checks,
+                'groups' => $report['groups'],
             ],
             'queue' => $this->queueCounts(),
             'binaries' => $plugin->getBinaryResolver()->inventory(),
@@ -330,10 +521,33 @@ class DiagnosticsService extends Component
     }
 
     /**
-     * @return array{id: string, status: 'pass'|'warn'|'fail', label: string, detail: string}
+     * @param array{package: string, command: string, notes: string}|null $hint
      */
-    private function check(string $id, string $status, string $label, string $detail): array
+    private function formatInstallHint(?array $hint): ?string
     {
+        if ($hint === null) {
+            return null;
+        }
+
+        $parts = [$hint['command']];
+        if ($hint['notes'] !== '') {
+            $parts[] = $hint['notes'];
+        }
+
+        return implode(' — ', $parts);
+    }
+
+    /**
+     * @return array{id: string, group: string, status: 'pass'|'warn'|'fail', label: string, detail: string, solution: ?string}
+     */
+    private function check(
+        string $id,
+        string $group,
+        string $status,
+        string $label,
+        string $detail,
+        ?string $solution = null,
+    ): array {
         $normalized = match ($status) {
             'pass', 'warn', 'fail' => $status,
             default => (static function (string $value): never {
@@ -343,9 +557,11 @@ class DiagnosticsService extends Component
 
         return [
             'id' => $id,
+            'group' => $group,
             'status' => $normalized,
             'label' => $label,
             'detail' => $detail,
+            'solution' => $solution,
         ];
     }
 

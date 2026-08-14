@@ -42,23 +42,26 @@ Shows:
 - optimizer tool selection per format
 - resolved binary paths from `optimizers.binaries` / env
 
-Use this to confirm macOS vs Ubuntu path wiring.
+Use this to confirm Ubuntu binary paths and apt install hints for missing tools.
 
 ---
 
 ## Playground
 
-1. Pick an Asset ID
-2. Choose profile / variant / format
-3. Generate preview
+1. Pick an Asset (element select).
+2. Choose a Profile.
+3. Click **Generate profile previews**.
 
-Preview generation:
+Playground expands the profile’s **variants × formats** (from `config/super-images.php`) and generates every unit via the real Generation Service.
 
-- calls real `GenerationService`
-- writes under `preview/Ymd/...` (not production derivative paths)
-- returns size/dimension comparison, % saved, duration, Twig/PHP samples
+Results show:
 
-Clean previews with:
+- original summary
+- a plain image grid grouped by variant (one card per format — no canvas overlays)
+- size / duration / % vs original
+- Twig examples for the profile
+
+Preview files write under `preview/Ymd/...` so they do not collide with production derivatives.
 
 ```bash
 php craft super-images/cleanup --previews-only --dry-run=1

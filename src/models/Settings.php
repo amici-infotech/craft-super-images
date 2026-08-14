@@ -111,7 +111,11 @@ class Settings extends Model
     /** @var array<string, mixed> */
     public array $profiles = [
         'responsive' => [
-            'formats' => ['jpg', 'webp'],
+            'formats' => [
+                'jpg',
+                'webp',
+                // 'avif',
+            ],
             'variants' => [
                 'sm' => ['width' => 576],
                 'md' => ['width' => 768],

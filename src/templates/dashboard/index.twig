@@ -6,51 +6,258 @@
     { label: "Super Images"|t('super-images'), url: cpUrl('super-images') },
 ] %}
 
+{% set doctorOk = summary.doctor.fail == 0 %}
+{% set queueFailed = summary.queue.available and summary.queue.failed > 0 %}
+
+{% css %}
+.si-dash {
+    display: grid;
+    gap: 20px;
+}
+.si-dash__hero {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 16px 24px;
+    align-items: flex-start;
+    padding: 20px 22px;
+    border: 1px solid #e3e5e8;
+    border-radius: 8px;
+    background: #fff;
+}
+.si-dash__hero h2 {
+    margin: 0 0 6px;
+}
+.si-dash__hero p {
+    margin: 0;
+    color: #6c757d;
+    max-width: 42rem;
+}
+.si-dash__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.si-dash__metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+}
+.si-dash__metric {
+    border: 1px solid #e3e5e8;
+    border-radius: 8px;
+    background: #fff;
+    padding: 16px 18px;
+}
+.si-dash__metric-label {
+    display: block;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #6c757d;
+    margin-bottom: 8px;
+}
+.si-dash__metric-value {
+    display: block;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.si-dash__metric-meta {
+    display: block;
+    margin-top: 6px;
+    color: #6c757d;
+    font-size: 12px;
+}
+.si-dash__panels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+.si-dash__panel {
+    border: 1px solid #e3e5e8;
+    border-radius: 8px;
+    background: #fff;
+    padding: 18px 20px;
+}
+.si-dash__panel h3 {
+    margin: 0 0 14px;
+    font-size: 15px;
+}
+.si-dash__rows {
+    display: grid;
+    gap: 10px;
+}
+.si-dash__row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: baseline;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0f1f3;
+}
+.si-dash__row:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+.si-dash__row dt {
+    margin: 0;
+    color: #6c757d;
+}
+.si-dash__row dd {
+    margin: 0;
+    font-weight: 600;
+    text-align: right;
+}
+.si-dash__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.si-dash__badge--ok {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+.si-dash__badge--warn {
+    background: #fff8e1;
+    color: #b26a00;
+}
+.si-dash__badge--fail {
+    background: #fdecea;
+    color: #c62828;
+}
+.si-dash__counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.si-dash__counts li {
+    min-width: 72px;
+}
+.si-dash__counts strong {
+    display: block;
+    font-size: 20px;
+    line-height: 1.2;
+}
+.si-dash__counts span {
+    color: #6c757d;
+    font-size: 12px;
+}
+{% endcss %}
+
 {% block content %}
-    <div class="readable">
-        <p>{{ "Operational overview for Super Images. PHP config is the source of truth."|t('super-images') }}</p>
-    </div>
+    <div class="si-dash">
+        <section class="si-dash__hero">
+            <div>
+                <h2>{{ "Super Images"|t('super-images') }}</h2>
+                <p>{{ "Pipeline health and delivery settings. PHP config (`config/super-images.php`) is the source of truth."|t('super-images') }}</p>
+            </div>
+            <div class="si-dash__actions">
+                {% if doctorOk and not queueFailed %}
+                    <span class="si-dash__badge si-dash__badge--ok"><span class="status green"></span> {{ "Healthy"|t('super-images') }}</span>
+                {% elseif summary.doctor.fail > 0 %}
+                    <span class="si-dash__badge si-dash__badge--fail"><span class="status red"></span> {{ "Needs attention"|t('super-images') }}</span>
+                {% else %}
+                    <span class="si-dash__badge si-dash__badge--warn"><span class="status orange"></span> {{ "Warnings"|t('super-images') }}</span>
+                {% endif %}
+                <a class="btn" href="{{ cpUrl('super-images/playground') }}">{{ "Playground"|t('super-images') }}</a>
+                <a class="btn" href="{{ cpUrl('super-images/diagnostics') }}">{{ "Diagnostics"|t('super-images') }}</a>
+                <a class="btn" href="{{ cpUrl('super-images/settings') }}">{{ "Settings"|t('super-images') }}</a>
+            </div>
+        </section>
 
-    <div class="flex flex-nowrap" style="gap: 24px; flex-wrap: wrap; margin-top: 24px;">
-        <div>
-            <h2>{{ "Status"|t('super-images') }}</h2>
-            <ul class="padded">
-                <li>{{ "Enabled"|t('super-images') }}: {{ summary.enabled ? 'yes'|t('super-images') : 'no'|t('super-images') }}</li>
-                <li>{{ "Delivery mode"|t('super-images') }}: {{ summary.deliveryMode }}</li>
-                <li>{{ "Driver"|t('super-images') }}: {{ summary.driver }}{% if summary.selectedDriver %} ({{ summary.selectedDriver }}){% endif %}</li>
-                <li>{{ "Storage"|t('super-images') }}: {{ summary.storageDefault }}</li>
-                <li>{{ "Profiles"|t('super-images') }}: {{ summary.profileCount }}</li>
-            </ul>
-        </div>
+        <section class="si-dash__metrics">
+            <div class="si-dash__metric">
+                <span class="si-dash__metric-label">{{ "Enabled"|t('super-images') }}</span>
+                <span class="si-dash__metric-value" style="color: {{ summary.enabled ? '#2e7d32' : '#c62828' }};">
+                    {{ summary.enabled ? 'Yes'|t('super-images') : 'No'|t('super-images') }}
+                </span>
+            </div>
+            <div class="si-dash__metric">
+                <span class="si-dash__metric-label">{{ "Delivery"|t('super-images') }}</span>
+                <span class="si-dash__metric-value">{{ summary.deliveryMode }}</span>
+                <span class="si-dash__metric-meta">{{ "Twig URL mode"|t('super-images') }}</span>
+            </div>
+            <div class="si-dash__metric">
+                <span class="si-dash__metric-label">{{ "Driver"|t('super-images') }}</span>
+                <span class="si-dash__metric-value">{{ summary.selectedDriver ?: summary.driver }}</span>
+                <span class="si-dash__metric-meta">{{ "Preference"|t('super-images') }}: {{ summary.driver }}</span>
+            </div>
+            <div class="si-dash__metric">
+                <span class="si-dash__metric-label">{{ "Storage"|t('super-images') }}</span>
+                <span class="si-dash__metric-value">{{ summary.storageDefault }}</span>
+                <span class="si-dash__metric-meta">{{ summary.profileCount }} {{ "profiles"|t('super-images') }}</span>
+            </div>
+        </section>
 
-        <div>
-            <h2>{{ "Doctor"|t('super-images') }}</h2>
-            <ul class="padded">
-                <li><span class="status green"></span> {{ "Pass"|t('super-images') }}: {{ summary.doctor.pass }}</li>
-                <li><span class="status orange"></span> {{ "Warn"|t('super-images') }}: {{ summary.doctor.warn }}</li>
-                <li><span class="status red"></span> {{ "Fail"|t('super-images') }}: {{ summary.doctor.fail }}</li>
-            </ul>
-            <p><a href="{{ cpUrl('super-images/diagnostics') }}">{{ "View diagnostics"|t('super-images') }}</a></p>
-        </div>
-
-        <div>
-            <h2>{{ "Queue"|t('super-images') }}</h2>
-            {% if summary.queue.available %}
-                <ul class="padded">
-                    <li>{{ "Pending"|t('super-images') }}: {{ summary.queue.pending }}</li>
-                    <li>{{ "Reserved"|t('super-images') }}: {{ summary.queue.reserved }}</li>
-                    <li>{{ "Failed"|t('super-images') }}: {{ summary.queue.failed }}</li>
+        <section class="si-dash__panels">
+            <div class="si-dash__panel">
+                <h3>{{ "Doctor"|t('super-images') }}</h3>
+                <ul class="si-dash__counts">
+                    <li>
+                        <strong style="color:#2e7d32;">{{ summary.doctor.pass }}</strong>
+                        <span>{{ "Passed"|t('super-images') }}</span>
+                    </li>
+                    <li>
+                        <strong style="color:#b26a00;">{{ summary.doctor.warn }}</strong>
+                        <span>{{ "Warnings"|t('super-images') }}</span>
+                    </li>
+                    <li>
+                        <strong style="color:#c62828;">{{ summary.doctor.fail }}</strong>
+                        <span>{{ "Failed"|t('super-images') }}</span>
+                    </li>
                 </ul>
-            {% else %}
-                <p class="light">{{ "Queue table not available."|t('super-images') }}</p>
-            {% endif %}
-        </div>
+                <p style="margin:16px 0 0;">
+                    <a href="{{ cpUrl('super-images/diagnostics') }}">{{ "Open full diagnostics →"|t('super-images') }}</a>
+                </p>
+            </div>
+
+            <div class="si-dash__panel">
+                <h3>{{ "Queue"|t('super-images') }}</h3>
+                {% if summary.queue.available %}
+                    <dl class="si-dash__rows">
+                        <div class="si-dash__row">
+                            <dt>{{ "Pending"|t('super-images') }}</dt>
+                            <dd>{{ summary.queue.pending }}</dd>
+                        </div>
+                        <div class="si-dash__row">
+                            <dt>{{ "Reserved"|t('super-images') }}</dt>
+                            <dd>{{ summary.queue.reserved }}</dd>
+                        </div>
+                        <div class="si-dash__row">
+                            <dt>{{ "Failed"|t('super-images') }}</dt>
+                            <dd style="color: {{ queueFailed ? '#c62828' : 'inherit' }};">{{ summary.queue.failed }}</dd>
+                        </div>
+                    </dl>
+                {% else %}
+                    <p class="light" style="margin:0;">{{ "Queue table not available."|t('super-images') }}</p>
+                {% endif %}
+            </div>
+
+            <div class="si-dash__panel">
+                <h3>{{ "Defaults"|t('super-images') }}</h3>
+                <dl class="si-dash__rows">
+                    <div class="si-dash__row">
+                        <dt>{{ "Profile"|t('super-images') }}</dt>
+                        <dd><code>{{ summary.defaultProfile }}</code></dd>
+                    </div>
+                    <div class="si-dash__row">
+                        <dt>{{ "Format"|t('super-images') }}</dt>
+                        <dd><code>{{ summary.defaultFormat }}</code></dd>
+                    </div>
+                    <div class="si-dash__row">
+                        <dt>{{ "Config"|t('super-images') }}</dt>
+                        <dd><code>config/super-images.php</code></dd>
+                    </div>
+                </dl>
+            </div>
+        </section>
     </div>
-
-    <hr>
-
-    <p>
-        <a class="btn" href="{{ cpUrl('super-images/playground') }}">{{ "Open Playground"|t('super-images') }}</a>
-        <a class="btn" href="{{ cpUrl('super-images/settings') }}">{{ "Settings overview"|t('super-images') }}</a>
-    </p>
 {% endblock %}

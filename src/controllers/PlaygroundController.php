@@ -12,6 +12,7 @@ use amici\SuperImages\exceptions\SuperImagesException;
 use amici\SuperImages\models\Settings;
 use amici\SuperImages\Plugin;
 use Craft;
+use craft\elements\Asset;
 use craft\web\Controller;
 use Throwable;
 use yii\web\BadRequestHttpException;
@@ -30,21 +31,10 @@ class PlaygroundController extends Controller
 
         $settings = Plugin::getInstance()->getSettings();
 
-        return $this->renderTemplate('super-images/playground/index', [
-            'settings' => $settings,
-            'profiles' => $this->profileOptions($settings->profiles),
-            'profileSelectOptions' => $this->profileSelectOptions($settings->profiles),
-            'formats' => $this->formatOptions($settings),
-            'formatSelectOptions' => $this->formatSelectOptions($settings),
-            'result' => null,
-            'error' => null,
-            'posted' => [
-                'assetId' => null,
-                'profile' => $settings->defaultProfile,
-                'variant' => null,
-                'format' => $settings->defaultFormat,
-            ],
-        ]);
+        return $this->renderTemplate('super-images/playground/index', $this->templateVars($settings, [
+            'assetId' => null,
+            'profile' => $settings->defaultProfile,
+        ]));
     }
 
     public function actionGenerate(): Response
@@ -55,39 +45,22 @@ class PlaygroundController extends Controller
         $request = Craft::$app->getRequest();
         $settings = Plugin::getInstance()->getSettings();
 
-        $assetId = (int) $request->getRequiredBodyParam('assetId');
+        $assetId = $this->resolveAssetId($request->getBodyParam('assetId'));
         $profile = (string) $request->getBodyParam('profile', $settings->defaultProfile);
-        $variant = $request->getBodyParam('variant');
-        $format = (string) $request->getBodyParam('format', $settings->defaultFormat);
-        $variant = is_string($variant) && $variant !== '' ? $variant : null;
 
         $posted = [
-            'assetId' => $assetId,
+            'assetId' => $assetId > 0 ? $assetId : null,
             'profile' => $profile,
-            'variant' => $variant,
-            'format' => $format,
         ];
 
-        $templateVars = [
-            'settings' => $settings,
-            'profiles' => $this->profileOptions($settings->profiles),
-            'profileSelectOptions' => $this->profileSelectOptions($settings->profiles),
-            'formats' => $this->formatOptions($settings),
-            'formatSelectOptions' => $this->formatSelectOptions($settings),
-            'posted' => $posted,
-        ];
+        $templateVars = $this->templateVars($settings, $posted);
 
         try {
             if ($assetId <= 0) {
-                throw new BadRequestHttpException('Asset ID is required.');
+                throw new BadRequestHttpException('Please choose an image asset.');
             }
 
-            $result = Plugin::getInstance()->getPlayground()->generate(
-                $assetId,
-                $profile,
-                $variant,
-                $format,
-            );
+            $result = Plugin::getInstance()->getPlayground()->generateProfile($assetId, $profile);
 
             if ($request->getAcceptsJson()) {
                 return $this->asJson($result);
@@ -121,74 +94,91 @@ class PlaygroundController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $profiles
-     * @return array<string, array{label: string, variants: list<string>}>
+     * @param array{assetId: ?int, profile: string} $posted
+     * @return array<string, mixed>
      */
-    private function profileOptions(array $profiles): array
+    private function templateVars(Settings $settings, array $posted): array
     {
-        $out = [];
-        foreach ($profiles as $handle => $config) {
+        $selectedAssets = [];
+        if (!empty($posted['assetId'])) {
+            $asset = Asset::find()->id((int) $posted['assetId'])->kind(Asset::KIND_IMAGE)->one();
+            if ($asset instanceof Asset) {
+                $selectedAssets[] = $asset;
+            }
+        }
+
+        $profileMeta = [];
+        foreach ($settings->profiles as $handle => $config) {
             if (!is_string($handle) || !is_array($config)) {
                 continue;
             }
-            $variants = $config['variants'] ?? [];
-            $out[$handle] = [
+
+            $variantsConfig = $config['variants'] ?? [];
+            $variants = is_array($variantsConfig)
+                ? array_values(array_map('strval', array_keys($variantsConfig)))
+                : [];
+
+            $formatsConfig = $config['formats'] ?? [];
+            $formats = [];
+            if (is_array($formatsConfig)) {
+                foreach ($formatsConfig as $format) {
+                    if (!is_string($format) || $format === '') {
+                        continue;
+                    }
+                    $formats[] = strtolower($format) === 'jpeg' ? 'jpg' : strtolower($format);
+                }
+                $formats = array_values(array_unique($formats));
+            }
+
+            $profileMeta[$handle] = [
                 'label' => $handle,
-                'variants' => is_array($variants) ? array_map('strval', array_keys($variants)) : [],
+                'variants' => $variants,
+                'formats' => $formats,
+                'unitCount' => count($variants) * count($formats),
             ];
         }
 
-        return $out;
+        return [
+            'settings' => $settings,
+            'profiles' => $profileMeta,
+            'profileSelectOptions' => $this->profileSelectOptions($profileMeta),
+            'posted' => $posted,
+            'selectedAssets' => $selectedAssets,
+            'assetElementType' => Asset::class,
+            'result' => null,
+            'error' => null,
+        ];
+    }
+
+    private function resolveAssetId(mixed $value): int
+    {
+        if (is_array($value)) {
+            $value = reset($value);
+        }
+
+        return (int) $value;
     }
 
     /**
-     * @param array<string, mixed> $profiles
+     * @param array<string, array{label: string, variants: list<string>, formats: list<string>, unitCount: int}> $profiles
      * @return list<array{label: string, value: string}>
      */
     private function profileSelectOptions(array $profiles): array
     {
         $options = [];
-        foreach ($this->profileOptions($profiles) as $handle => $profile) {
+        foreach ($profiles as $handle => $profile) {
+            $formatLabel = $profile['formats'] !== []
+                ? implode(', ', $profile['formats'])
+                : '—';
             $options[] = [
-                'label' => $profile['label'],
+                'label' => sprintf(
+                    '%s (%d images · %d variants · %s)',
+                    $handle,
+                    $profile['unitCount'],
+                    count($profile['variants']),
+                    $formatLabel,
+                ),
                 'value' => $handle,
-            ];
-        }
-
-        return $options;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function formatOptions(Settings $settings): array
-    {
-        $formats = array_keys($settings->encoders);
-        $normalized = [];
-        foreach ($formats as $format) {
-            if (!is_string($format) || $format === '') {
-                continue;
-            }
-            $key = strtolower($format) === 'jpeg' ? 'jpg' : strtolower($format);
-            $normalized[$key] = $key;
-        }
-
-        $normalized = array_values($normalized);
-        sort($normalized);
-
-        return $normalized;
-    }
-
-    /**
-     * @return list<array{label: string, value: string}>
-     */
-    private function formatSelectOptions(Settings $settings): array
-    {
-        $options = [];
-        foreach ($this->formatOptions($settings) as $format) {
-            $options[] = [
-                'label' => $format,
-                'value' => $format,
             ];
         }
 
