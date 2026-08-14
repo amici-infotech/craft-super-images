@@ -1,4 +1,10 @@
 <?php
+/**
+ * Auto-enqueues eager generation after asset saves.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\services;
 
@@ -10,10 +16,21 @@ use craft\helpers\ElementHelper;
 use yii\base\Component;
 
 /**
- * Auto-enqueues eager generation after asset saves.
+ * Auto Generate Service
+ *
+ * Listens for asset save events and enqueues or synchronously runs derivative
+ * generation when autoGenerate settings and volume rules allow it.
  */
 final class AutoGenerateService extends Component
 {
+    /**
+     * Handle an asset after-save event and enqueue generation when appropriate.
+     *
+     * @param Asset $asset The saved asset element.
+     * @param bool $isNew True when the asset was newly created.
+     *
+     * @return void
+     */
     public function handleAfterSave(Asset $asset, bool $isNew): void
     {
         if (!$this->shouldEnqueue($asset, $isNew)) {
@@ -23,6 +40,14 @@ final class AutoGenerateService extends Component
         $this->enqueue($asset);
     }
 
+    /**
+     * Determine whether generation should be enqueued for this asset save.
+     *
+     * @param Asset $asset The saved asset element.
+     * @param bool $isNew True when the asset was newly created.
+     *
+     * @return bool True when auto-generate rules match this save.
+     */
     public function shouldEnqueue(Asset $asset, bool $isNew): bool
     {
         $plugin = Plugin::getInstance();
@@ -72,6 +97,13 @@ final class AutoGenerateService extends Component
         return false;
     }
 
+    /**
+     * Enqueue or synchronously run generation for all manifest units of an asset.
+     *
+     * @param Asset $asset The asset to generate derivatives for.
+     *
+     * @return void
+     */
     public function enqueue(Asset $asset): void
     {
         $settings = Plugin::getInstance()->getSettings();
@@ -93,6 +125,11 @@ final class AutoGenerateService extends Component
         }
     }
 
+    /**
+     * Check whether Craft is updating, migrating, or has pending plugin updates.
+     *
+     * @return bool True during import/maintenance windows when auto-generate should be suppressed.
+     */
     private function isImportOrMaintenance(): bool
     {
         if (Craft::$app->getIsUpdating()) {
@@ -106,6 +143,13 @@ final class AutoGenerateService extends Component
         return Craft::$app->getUpdates()->getIsPluginUpdatePending('super-images');
     }
 
+    /**
+     * Check whether the asset file metadata changed on this save.
+     *
+     * @param Asset $asset The saved asset element.
+     *
+     * @return bool True when filename, kind, size, or dimensions are dirty.
+     */
     private function assetFileChanged(Asset $asset): bool
     {
         $dirty = $asset->getDirtyAttributes();
@@ -117,6 +161,13 @@ final class AutoGenerateService extends Component
             || in_array('height', $dirty, true);
     }
 
+    /**
+     * Check whether the asset focal point changed on this save.
+     *
+     * @param Asset $asset The saved asset element.
+     *
+     * @return bool True when focalPoint is in the dirty attributes list.
+     */
     private function focalPointChanged(Asset $asset): bool
     {
         return in_array('focalPoint', $asset->getDirtyAttributes(), true);

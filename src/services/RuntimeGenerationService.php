@@ -1,4 +1,10 @@
 <?php
+/**
+ * Handles signed runtime generation HTTP requests.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\services;
 
@@ -11,12 +17,22 @@ use amici\SuperImages\Plugin;
 use yii\base\Component;
 
 /**
- * Handles signed runtime generation requests.
+ * Runtime Generation Service
+ *
+ * Validates signed runtime parameters, enforces size limits, acquires generation
+ * locks, and returns the storage URL after on-demand derivative generation.
  */
 final class RuntimeGenerationService extends Component
 {
     /**
-     * @param array<string, scalar> $params Verified signed parameters.
+     * Handle a verified signed runtime generation request.
+     *
+     * @param array<string, scalar> $params Verified signed parameters from SignedUrlService.
+     *
+     * @return string The public URL of the generated or existing derivative.
+     *
+     * @throws InvalidConfigurationException When runtime generation is disabled.
+     * @throws SuperImagesException When generation is already in progress or limits are exceeded.
      */
     public function handle(array $params): string
     {
@@ -68,7 +84,11 @@ final class RuntimeGenerationService extends Component
     }
 
     /**
-     * @param array<string, scalar> $params
+     * Build a GenerationRequest from verified signed URL parameters.
+     *
+     * @param array<string, scalar> $params Verified query parameters.
+     *
+     * @return GenerationRequest The generation request for planning and generation.
      */
     private function buildRequest(array $params): GenerationRequest
     {
@@ -83,7 +103,14 @@ final class RuntimeGenerationService extends Component
     }
 
     /**
-     * @param array<string, mixed> $runtimeSettings
+     * Enforce runtime dimension and pixel-count limits from settings.
+     *
+     * @param EffectiveConfig $config The resolved effective configuration.
+     * @param array<string, mixed> $runtimeSettings The runtime section from plugin settings.
+     *
+     * @return void
+     *
+     * @throws SuperImagesException When requested dimensions exceed configured limits.
      */
     private function enforceRuntimeLimits(EffectiveConfig $config, array $runtimeSettings): void
     {

@@ -1,4 +1,10 @@
 <?php
+/**
+ * Crop geometry operation.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\operations\geometry;
 
@@ -10,13 +16,33 @@ use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
 
+/**
+ * Crop Operation
+ *
+ * Crops the image to the requested dimensions from a focal position.
+ * Supported options: `width`, `height` (default to current dimensions), `position` (default: "center-center").
+ * Supported drivers: GD, Imagick, libvips.
+ */
 final class Crop extends AbstractOperation
 {
+    /**
+     * Returns the operation identifier.
+     *
+     * @return string
+     */
     public function name(): string
     {
         return 'crop';
     }
 
+    /**
+     * Crops the image via the active driver.
+     *
+     * @param ImageHandle $handle The image to crop.
+     * @param ImageDriverInterface $driver The active image driver.
+     *
+     * @return ImageHandle The cropped image handle.
+     */
     public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle
     {
         $width = (int)($this->options['width'] ?? $handle->width);

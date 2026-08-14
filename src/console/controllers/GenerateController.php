@@ -1,4 +1,10 @@
 <?php
+/**
+ * Console generate command for Super Images eager generation.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\console\controllers;
 
@@ -11,28 +17,86 @@ use yii\console\ExitCode;
 use yii\helpers\Console;
 
 /**
+ * Generate Controller
+ *
  * Eager generation via CLI.
+ *
+ *     php craft super-images/generate --asset=123
+ *     php craft super-images/generate --volume=images --profile=hero
+ *     php craft super-images/generate --volume=images --queue --force
  */
 class GenerateController extends Controller
 {
+    /**
+     * Generate derivatives for a single asset ID.
+     *
+     * @var int|null
+     */
     public ?int $asset = null;
 
+    /**
+     * Generate derivatives for all image assets in a volume handle.
+     *
+     * @var string|null
+     */
     public ?string $volume = null;
 
+    /**
+     * Restrict generation to a profile handle.
+     *
+     * @var string|null
+     */
     public ?string $profile = null;
 
+    /**
+     * Restrict generation to a variant handle.
+     *
+     * @var string|null
+     */
     public ?string $variant = null;
 
+    /**
+     * Restrict generation to an output format.
+     *
+     * @var string|null
+     */
     public ?string $format = null;
 
+    /**
+     * List planned units without generating.
+     *
+     * @var bool
+     */
     public bool $dryRun = false;
 
+    /**
+     * Enqueue {@see GenerateAssetJob} jobs instead of generating inline.
+     *
+     * @var bool
+     */
     public bool $queue = false;
 
+    /**
+     * Regenerate even when derivatives already exist.
+     *
+     * @var bool
+     */
     public bool $force = false;
 
+    /**
+     * Maximum number of assets to process (0 = no limit).
+     *
+     * @var int
+     */
     public int $limit = 0;
 
+    /**
+     * Returns the list of options available for this command.
+     *
+     * @param string $actionID The action ID of the controller.
+     *
+     * @return list<string> Option property names.
+     */
     public function options($actionID): array
     {
         return array_merge(parent::options($actionID), [
@@ -48,6 +112,11 @@ class GenerateController extends Controller
         ]);
     }
 
+    /**
+     * Returns option name aliases.
+     *
+     * @return array<string, string> Alias map.
+     */
     public function optionAliases(): array
     {
         return [
@@ -57,6 +126,11 @@ class GenerateController extends Controller
         ];
     }
 
+    /**
+     * Generates manifest units for matching assets synchronously or via queue.
+     *
+     * @return int Console exit code; non-zero when any unit fails.
+     */
     public function actionIndex(): int
     {
         if (!$this->asset && !$this->volume) {

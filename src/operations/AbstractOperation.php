@@ -1,4 +1,10 @@
 <?php
+/**
+ * Base class for image transformation operations.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\operations;
 
@@ -7,30 +13,64 @@ use amici\SuperImages\contracts\OperationInterface;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\models\OperationDefinition;
 
+/**
+ * Abstract Operation
+ *
+ * Provides shared option handling and driver support checks for concrete image operations.
+ * Subclasses must implement {@see name()} and {@see apply()}.
+ */
 abstract class AbstractOperation implements OperationInterface
 {
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Normalized operation options from the definition. */
     protected array $options;
 
     /**
-     * @param array<string, mixed> $options
+     * Creates an operation instance with normalized options.
+     *
+     * @param array<string, mixed> $options Raw operation options keyed by parameter name.
      */
     public function __construct(array $options = [])
     {
         $this->options = OperationDefinition::normalizeOptions($options);
     }
 
+    /**
+     * Returns the normalized options passed to this operation.
+     *
+     * @return array<string, mixed>
+     */
     public function options(): array
     {
         return $this->options;
     }
 
+    /**
+     * Determines whether the given driver can perform this operation.
+     *
+     * @param ImageHandle $handle The current image handle (available for context; unused by default).
+     * @param ImageDriverInterface $driver The active image driver.
+     *
+     * @return bool True when the driver reports support for this operation name.
+     */
     public function supports(ImageHandle $handle, ImageDriverInterface $driver): bool
     {
         return $driver->supports($this->name());
     }
 
+    /**
+     * Returns the canonical operation name used in definitions and the registry.
+     *
+     * @return string The operation identifier (e.g. "resize", "crop").
+     */
     abstract public function name(): string;
 
+    /**
+     * Applies the transformation to the image handle using the given driver.
+     *
+     * @param ImageHandle $handle The image to transform.
+     * @param ImageDriverInterface $driver The driver that performs the low-level work.
+     *
+     * @return ImageHandle The transformed image handle.
+     */
     abstract public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle;
 }

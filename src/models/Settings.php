@@ -1,23 +1,38 @@
 <?php
+/**
+ * Plugin settings model for Super Images configuration.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\models;
 
 use craft\base\Model;
 
+/**
+ * Settings Model
+ *
+ * Holds CP/project-config settings for profiles, storage, encoders, optimizers, and delivery.
+ */
 class Settings extends Model
 {
+    /** @var int Schema version included in generation identity payloads. */
     public const SCHEMA_VERSION = 1;
 
+    /** @var bool Whether the plugin processes generation requests. */
     public bool $enabled = true;
 
+    /** @var string Default profile handle when none is specified on a request. */
     public string $defaultProfile = 'responsive';
 
+    /** @var string Default output format slug when none is specified on a request. */
     public string $defaultFormat = 'webp';
 
-    /** @var string auto|libvips|imagick|gd */
+    /** @var string Image driver preference: `auto`, `libvips`, `imagick`, or `gd`. */
     public string $driver = 'auto';
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Auto-generation triggers and queue behaviour. */
     public array $autoGenerate = [
         'enabled' => true,
         'onUpload' => true,
@@ -27,7 +42,7 @@ class Settings extends Model
         'disableDuringImport' => true,
     ];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Local and remote source resolution rules. */
     public array $sources = [
         'local' => [
             'enabled' => true,
@@ -45,12 +60,12 @@ class Settings extends Model
         ],
     ];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> URL delivery mode (`eager`, `lazy`, or `hybrid`). */
     public array $delivery = [
         'mode' => 'lazy', // eager|lazy|hybrid — eager/hybrid emit storage URLs; lazy emits signed runtime URLs
     ];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Signed runtime URL generation limits and secrets. */
     public array $runtime = [
         'enabled' => true,
         /** @var string|null Falls back to Craft security key when null. */
@@ -61,7 +76,7 @@ class Settings extends Model
         'maxPixels' => 20_000_000,
     ];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Default storage adapter and marker directory configuration. */
     public array $storage = [
         'default' => 'local',
         'markers' => [
@@ -77,7 +92,7 @@ class Settings extends Model
         ],
     ];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Per-format encoder defaults (quality and format-specific options). */
     public array $encoders = [
         'jpeg' => ['quality' => 82],
         'jpg' => ['quality' => 82],
@@ -86,7 +101,7 @@ class Settings extends Model
         'avif' => ['quality' => 65],
     ];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Post-encode optimizer tool configuration per format. */
     public array $optimizers = [
         'enabled' => true,
         /**
@@ -108,7 +123,7 @@ class Settings extends Model
         'avif' => null,
     ];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Named responsive/transform profiles and their variants. */
     public array $profiles = [
         'responsive' => [
             'formats' => [
@@ -131,19 +146,19 @@ class Settings extends Model
         ],
     ];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Standalone variant definitions keyed by handle. */
     public array $variants = [];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Per-volume overrides for profiles, storage, or generation rules. */
     public array $volumes = [];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Per-folder overrides within asset volumes. */
     public array $folders = [];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Per-field overrides for asset fields. */
     public array $fields = [];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, mixed> Retention and cleanup rules for preview and obsolete derivatives. */
     public array $cleanup = [
         'previewRetentionDays' => 2,
         'obsoleteRetentionDays' => 30,
@@ -152,7 +167,9 @@ class Settings extends Model
     ];
 
     /**
-     * @return array<string, mixed>
+     * Exports settings as a plain array for config merging and diagnostics.
+     *
+     * @return array<string, mixed> All configurable keys and their current values.
      */
     public function getConfig(): array
     {

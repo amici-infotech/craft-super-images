@@ -14,11 +14,23 @@ use yii\web\Response;
 
 /**
  * Diagnostics Controller
+ *
+ * Renders doctor checks, summary data, and binary inventory in the CP.
  */
 class DiagnosticsController extends Controller
 {
+    /**
+     * Whether anonymous requests are allowed.
+     *
+     * @var array|bool|int
+     */
     protected array|bool|int $allowAnonymous = false;
 
+    /**
+     * Renders the diagnostics page.
+     *
+     * @return Response The rendered CP template response.
+     */
     public function actionIndex(): Response
     {
         $this->requirePermission('super-images:diagnostics');

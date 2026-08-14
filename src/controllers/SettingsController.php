@@ -19,8 +19,18 @@ use yii\web\Response;
  */
 class SettingsController extends Controller
 {
+    /**
+     * Whether anonymous requests are allowed.
+     *
+     * @var array|bool|int
+     */
     protected array|bool|int $allowAnonymous = false;
 
+    /**
+     * Renders the read-only settings overview.
+     *
+     * @return Response The rendered CP template response.
+     */
     public function actionIndex(): Response
     {
         $this->requirePermission('super-images:manage-settings');

@@ -15,20 +15,34 @@ use yii\base\Component;
 
 /**
  * Diagnostics Service
+ *
+ * Runs environment and configuration health checks for CLI doctor output and the
+ * Control Panel dashboard. Covers drivers, optimizers, storage, delivery, and queue state.
  */
 class DiagnosticsService extends Component
 {
+    /** Doctor check group: core plugin settings. */
     public const GROUP_CORE = 'core';
+
+    /** Doctor check group: image driver availability. */
     public const GROUP_DRIVERS = 'drivers';
+
+    /** Doctor check group: post-encode optimizer binaries. */
     public const GROUP_OPTIMIZERS = 'optimizers';
+
+    /** Doctor check group: derivative storage and temp paths. */
     public const GROUP_STORAGE = 'storage';
+
+    /** Doctor check group: delivery mode and runtime signing. */
     public const GROUP_DELIVERY = 'delivery';
+
+    /** Doctor check group: Craft queue job counts. */
     public const GROUP_QUEUE = 'queue';
 
     /**
      * Ordered group labels for doctor output.
      *
-     * @return array<string, string>
+     * @return array<string, string> Map of group ID to human-readable label.
      */
     public function doctorGroups(): array
     {
@@ -43,7 +57,7 @@ class DiagnosticsService extends Component
     }
 
     /**
-     * Run doctor checks.
+     * Run all doctor checks and return a flat list of results.
      *
      * @return list<array{id: string, group: string, status: 'pass'|'warn'|'fail', label: string, detail: string, solution: ?string}>
      */
@@ -445,9 +459,9 @@ class DiagnosticsService extends Component
     }
 
     /**
-     * Compact summary for the CP dashboard.
+     * Compact summary for the CP dashboard widget.
      *
-     * @return array<string, mixed>
+     * @return array<string, mixed> Dashboard payload with settings snapshot, doctor results, queue, and binaries.
      */
     public function dashboardSummary(): array
     {
@@ -490,6 +504,8 @@ class DiagnosticsService extends Component
     }
 
     /**
+     * Query Craft queue table counts when available.
+     *
      * @return array{available: bool, pending: int, failed: int, reserved: int}
      */
     private function queueCounts(): array
@@ -521,7 +537,11 @@ class DiagnosticsService extends Component
     }
 
     /**
-     * @param array{package: string, command: string, notes: string}|null $hint
+     * Format an Ubuntu install hint into a single solution string.
+     *
+     * @param array{package: string, command: string, notes: string}|null $hint Install hint from UbuntuInstallHints.
+     *
+     * @return string|null Combined command and notes, or null when no hint exists.
      */
     private function formatInstallHint(?array $hint): ?string
     {
@@ -538,6 +558,15 @@ class DiagnosticsService extends Component
     }
 
     /**
+     * Build a normalized doctor check result row.
+     *
+     * @param string $id Stable check identifier.
+     * @param string $group Doctor group constant (GROUP_*).
+     * @param string $status Check status: pass, warn, or fail.
+     * @param string $label Short human-readable label.
+     * @param string $detail Descriptive detail text.
+     * @param string|null $solution Optional remediation guidance.
+     *
      * @return array{id: string, group: string, status: 'pass'|'warn'|'fail', label: string, detail: string, solution: ?string}
      */
     private function check(
@@ -565,6 +594,15 @@ class DiagnosticsService extends Component
         ];
     }
 
+    /**
+     * Ensure a directory exists and is writable by the PHP process.
+     *
+     * Creates the directory with mode 0755 when missing.
+     *
+     * @param string $path Absolute filesystem path to check.
+     *
+     * @return bool True when the directory exists and is writable.
+     */
     private function ensureWritableDirectory(string $path): bool
     {
         if (!is_dir($path) && !@mkdir($path, 0755, true) && !is_dir($path)) {

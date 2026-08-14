@@ -18,9 +18,17 @@ use yii\base\Event;
  */
 class RegisterStorageAdaptersEvent extends Event
 {
-    /** @var array<string, StorageAdapterInterface> */
+    /**
+     * Storage adapter instances keyed by handle.
+     *
+     * @var array<string, StorageAdapterInterface>
+     */
     public array $adapters = [];
 
-    /** @var array<string, array<string, mixed>> */
+    /**
+     * Optional adapter configuration keyed by handle.
+     *
+     * @var array<string, array<string, mixed>>
+     */
     public array $configs = [];
 }

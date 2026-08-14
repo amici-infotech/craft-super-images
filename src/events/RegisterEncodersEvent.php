@@ -13,9 +13,15 @@ use yii\base\Event;
 
 /**
  * Register Encoders Event
+ *
+ * Append encoder instances to `$encoders` during registration.
  */
 class RegisterEncodersEvent extends Event
 {
-    /** @var list<EncoderInterface> */
+    /**
+     * Encoder instances to register.
+     *
+     * @var list<EncoderInterface>
+     */
     public array $encoders = [];
 }

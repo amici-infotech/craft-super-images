@@ -1,4 +1,10 @@
 <?php
+/**
+ * Builds side-effect-free generation manifests for assets.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\services;
 
@@ -13,13 +19,22 @@ use craft\elements\Asset;
 use yii\base\Component;
 
 /**
- * Builds side-effect-free generation manifests for assets.
+ * Manifest Service
+ *
+ * Plans all derivative units for an asset (profile × variant × format) without
+ * performing generation or storage I/O. Used by CLI, queue jobs, and auto-generate.
  */
 final class ManifestService extends Component
 {
     /**
-     * @param array<string, mixed> $filters profile, variant, format, fieldHandle
-     * @return list<ManifestUnit>
+     * Build the full manifest of planned derivatives for an asset.
+     *
+     * @param Asset $asset The source asset element.
+     * @param array<string, mixed> $filters Optional filters: profile, variant, format, fieldHandle.
+     *
+     * @return list<ManifestUnit> Deduplicated list of planned generation units.
+     *
+     * @throws InvalidConfigurationException When the resolved default profile is not defined.
      */
     public function buildForAsset(Asset $asset, array $filters = []): array
     {
@@ -79,8 +94,16 @@ final class ManifestService extends Component
     }
 
     /**
-     * @param array<string, array<string, mixed>> $profilesConfig
-     * @return list<string>
+     * Resolve which profiles apply to an asset from filters, field, volume, or default.
+     *
+     * @param Asset $asset The source asset element.
+     * @param array<string, array<string, mixed>> $profilesConfig All profile definitions from settings.
+     * @param array<string, mixed> $filters Request filters that may include profile.
+     * @param FieldInterface|null $field Optional field context for field-level profile rules.
+     *
+     * @return list<string> Profile handles to include in the manifest.
+     *
+     * @throws InvalidConfigurationException When the default profile is not defined.
      */
     private function resolveProfiles(
         Asset $asset,
@@ -120,7 +143,11 @@ final class ManifestService extends Component
     }
 
     /**
-     * @return list<string>
+     * Resolve profile handles configured for a specific field.
+     *
+     * @param FieldInterface $field The Craft field element.
+     *
+     * @return list<string> Profile handles from field config, or empty when none are set.
      */
     private function fieldProfiles(FieldInterface $field): array
     {
@@ -138,6 +165,13 @@ final class ManifestService extends Component
         return [];
     }
 
+    /**
+     * Resolve a field element from an optional handle filter.
+     *
+     * @param mixed $fieldHandle Field handle from filters, or null.
+     *
+     * @return FieldInterface|null The field element, or null when handle is missing or invalid.
+     */
     private function resolveField(mixed $fieldHandle): ?FieldInterface
     {
         if (!is_string($fieldHandle) || $fieldHandle === '') {
@@ -150,7 +184,12 @@ final class ManifestService extends Component
     }
 
     /**
-     * @return list<string>
+     * Resolve variant names from a filter or profile definition.
+     *
+     * @param ProfileDefinition $profile The active profile definition.
+     * @param mixed $filter Optional variant name filter.
+     *
+     * @return list<string> Variant names to include in the manifest.
      */
     private function resolveVariantNames(ProfileDefinition $profile, mixed $filter): array
     {
@@ -183,7 +222,12 @@ final class ManifestService extends Component
     }
 
     /**
-     * @return list<string>
+     * Resolve output formats from a filter or profile definition.
+     *
+     * @param ProfileDefinition $profile The active profile definition.
+     * @param mixed $filter Optional format filter.
+     *
+     * @return list<string> Format strings to include in the manifest.
      */
     private function resolveFormats(ProfileDefinition $profile, mixed $filter): array
     {

@@ -1,4 +1,10 @@
 <?php
+/**
+ * Console config dump command for Super Images.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\console\controllers;
 
@@ -10,17 +16,39 @@ use yii\helpers\Console;
 use yii\helpers\Json;
 
 /**
- * Dumps effective Super Images configuration.
+ * Config Controller
+ *
+ * Dumps effective Super Images configuration as JSON.
+ *
+ *     php craft super-images/config
+ *     php craft super-images/config --asset=123
  */
 class ConfigController extends Controller
 {
+    /**
+     * Optional asset ID to include manifest sample units in the output.
+     *
+     * @var int|null
+     */
     public ?int $asset = null;
 
+    /**
+     * Returns the list of options available for this command.
+     *
+     * @param string $actionID The action ID of the controller.
+     *
+     * @return list<string> Option property names.
+     */
     public function options($actionID): array
     {
         return array_merge(parent::options($actionID), ['asset']);
     }
 
+    /**
+     * Prints effective plugin configuration (and optional asset manifest sample).
+     *
+     * @return int Console exit code.
+     */
     public function actionIndex(): int
     {
         $plugin = Plugin::getInstance();

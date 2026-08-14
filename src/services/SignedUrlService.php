@@ -1,4 +1,10 @@
 <?php
+/**
+ * Signs and verifies runtime generation URLs.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\services;
 
@@ -10,14 +16,25 @@ use craft\helpers\UrlHelper;
 use yii\base\Component;
 
 /**
- * Signs and verifies runtime generation URLs.
+ * Signed URL Service
+ *
+ * Creates HMAC-signed action URLs for lazy runtime generation and verifies
+ * incoming requests before handing off to RuntimeGenerationService.
  */
 final class SignedUrlService extends Component
 {
+    /** Craft action route handled by the runtime generation controller. */
     private const ACTION_ROUTE = 'super-images/runtime/generate';
 
     /**
-     * @param array<string, scalar|null> $params assetId|localPath|remoteUrl, profile, variant, format
+     * Sign generation parameters into a time-limited action URL.
+     *
+     * @param array<string, scalar|null> $params Source (assetId|localPath|remoteUrl), profile, variant, format.
+     *
+     * @return string The signed action URL with expiry and signature query parameters.
+     *
+     * @throws InvalidConfigurationException When runtime generation is disabled.
+     * @throws SuperImagesException When required parameters are missing.
      */
     public function sign(array $params): string
     {
@@ -36,8 +53,13 @@ final class SignedUrlService extends Component
     }
 
     /**
-     * @param array<string, mixed> $queryParams
-     * @return array<string, scalar>
+     * Verify a signed runtime URL and return normalized parameters.
+     *
+     * @param array<string, mixed> $queryParams Raw query parameters from the HTTP request.
+     *
+     * @return array<string, scalar> Verified parameter payload suitable for RuntimeGenerationService.
+     *
+     * @throws SuperImagesException When runtime is disabled, signature is invalid, or URL expired.
      */
     public function verify(array $queryParams): array
     {
@@ -72,8 +94,13 @@ final class SignedUrlService extends Component
     }
 
     /**
-     * @param array<string, mixed> $params
-     * @return array<string, scalar>
+     * Normalize and validate signed URL parameters.
+     *
+     * @param array<string, mixed> $params Raw parameters from sign() or verify().
+     *
+     * @return array<string, scalar> Normalized scalar parameter map.
+     *
+     * @throws SuperImagesException When source or required transform keys are missing.
      */
     private function normalizeParams(array $params): array
     {
@@ -105,7 +132,11 @@ final class SignedUrlService extends Component
     }
 
     /**
-     * @param array<string, scalar> $params
+     * Compute the HMAC-SHA256 signature for a parameter payload.
+     *
+     * @param array<string, scalar> $params Parameters including exp but excluding sig.
+     *
+     * @return string Hex-encoded HMAC digest.
      */
     private function computeSignature(array $params): string
     {
@@ -118,6 +149,11 @@ final class SignedUrlService extends Component
         return hash_hmac('sha256', $payload, $secret);
     }
 
+    /**
+     * Resolve the signing secret from runtime config or Craft security key.
+     *
+     * @return string The HMAC secret string.
+     */
     private function signingSecret(): string
     {
         $settings = Plugin::getInstance()->getSettings();

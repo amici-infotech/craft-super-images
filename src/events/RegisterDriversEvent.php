@@ -13,9 +13,15 @@ use yii\base\Event;
 
 /**
  * Register Drivers Event
+ *
+ * Append driver instances to `$drivers` during registration.
  */
 class RegisterDriversEvent extends Event
 {
-    /** @var list<ImageDriverInterface> */
+    /**
+     * Driver instances to register.
+     *
+     * @var list<ImageDriverInterface>
+     */
     public array $drivers = [];
 }

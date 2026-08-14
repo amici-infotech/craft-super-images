@@ -1,4 +1,10 @@
 <?php
+/**
+ * Blur effect operation.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\operations\effects;
 
@@ -10,13 +16,33 @@ use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
 
+/**
+ * Blur Operation
+ *
+ * Applies a blur effect to the image. Driver-specific options apply:
+ * GD: `passes` (default: 1); Imagick: `radius`, `sigma` (default: 1.0); libvips: `sigma` (default: 1.0).
+ * Supported drivers: GD, Imagick, libvips.
+ */
 final class Blur extends AbstractOperation
 {
+    /**
+     * Returns the operation identifier.
+     *
+     * @return string
+     */
     public function name(): string
     {
         return 'blur';
     }
 
+    /**
+     * Blurs the image via the active driver.
+     *
+     * @param ImageHandle $handle The image to blur.
+     * @param ImageDriverInterface $driver The active image driver.
+     *
+     * @return ImageHandle The blurred image handle.
+     */
     public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle
     {
         return match (true) {

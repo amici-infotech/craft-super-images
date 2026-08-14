@@ -1,4 +1,10 @@
 <?php
+/**
+ * Console status command for Super Images runtime state.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\console\controllers;
 
@@ -10,10 +16,19 @@ use yii\helpers\Console;
 use yii\helpers\Json;
 
 /**
- * Reports Super Images runtime status.
+ * Status Controller
+ *
+ * Reports Super Images runtime status as JSON.
+ *
+ *     php craft super-images/status
  */
 class StatusController extends Controller
 {
+    /**
+     * Prints enabled state, delivery mode, driver selection, and queue depth.
+     *
+     * @return int Console exit code.
+     */
     public function actionIndex(): int
     {
         $plugin = Plugin::getInstance();

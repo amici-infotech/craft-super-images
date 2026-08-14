@@ -15,26 +15,55 @@ use amici\SuperImages\Plugin;
 
 /**
  * Binary Optimizer
+ *
+ * Invokes configured CLI tools (jpegoptim, oxipng, cwebp, etc.) to shrink encoded output.
+ * Failures are non-fatal unless the caller opts into strict handling elsewhere.
  */
 class BinaryOptimizer implements OptimizerInterface
 {
+    /**
+     * Returns the optimizer identifier used in configuration and logging.
+     *
+     * @return string Always "binary".
+     */
     public function name(): string
     {
         return 'binary';
     }
 
+    /**
+     * Checks whether the optimizer supports the requested output format.
+     *
+     * @param string $format Target format slug (case-insensitive).
+     *
+     * @return bool True for jpeg, png, webp, and avif variants.
+     */
     public function supports(string $format): bool
     {
         return in_array(strtolower($format), ['jpeg', 'jpg', 'png', 'webp', 'avif'], true);
     }
 
+    /**
+     * Checks whether a specific optimizer binary is available on the system.
+     *
+     * @param string $tool Optimizer tool slug (e.g. "jpegoptim", "cwebp").
+     * @param string|null $binaryPath Optional explicit path to the binary executable.
+     *
+     * @return bool True when the binary resolver locates a usable executable.
+     */
     public function canOptimize(string $tool, ?string $binaryPath = null): bool
     {
         return Plugin::getInstance()->getBinaryResolver()->isAvailable($tool, $binaryPath);
     }
 
     /**
-     * @param array<string, mixed> $options
+     * Runs an external optimizer tool against the encoded image when configured.
+     *
+     * @param EncodedImage $encoded The image produced by the encoder stage.
+     * @param string $format Target format slug used to pick file extensions and tool behavior.
+     * @param array<string, mixed> $options Tool selection, binary path, quality, and other tool-specific settings.
+     *
+     * @return EncodedImage The optimized image, or the original when optimization is skipped or fails.
      */
     public function optimize(EncodedImage $encoded, string $format, array $options = []): EncodedImage
     {
@@ -86,8 +115,18 @@ class BinaryOptimizer implements OptimizerInterface
     }
 
     /**
-     * @param array<string, mixed> $options
-     * @return list<string>
+     * Builds the CLI argument list for the requested optimizer tool.
+     *
+     * @param string $tool Optimizer tool slug.
+     * @param string $binary Resolved absolute path to the executable.
+     * @param string $format Target format slug.
+     * @param string $input Absolute path to the input file.
+     * @param string $output Absolute path to the output file.
+     * @param array<string, mixed> $options Tool-specific options such as quality.
+     *
+     * @return list<string> Command and arguments suitable for ProcessRunner.
+     *
+     * @throws OptimizerUnavailableException When the tool slug is not recognized.
      */
     private function buildCommand(
         string $tool,
@@ -110,6 +149,14 @@ class BinaryOptimizer implements OptimizerInterface
         };
     }
 
+    /**
+     * Resolves a filesystem path for optimizer input, writing bytes to a temp file when needed.
+     *
+     * @param EncodedImage $encoded The encoded image, which may hold bytes or a path.
+     * @param object $temporaryFiles Temporary file manager from the plugin container.
+     *
+     * @return string Absolute path readable by external optimizer binaries.
+     */
     private function resolveInputPath(EncodedImage $encoded, $temporaryFiles): string
     {
         if ($encoded->hasPath()) {
@@ -123,6 +170,13 @@ class BinaryOptimizer implements OptimizerInterface
         );
     }
 
+    /**
+     * Maps a format slug to a conventional file extension for temp files.
+     *
+     * @param string $format Target format slug.
+     *
+     * @return string File extension without a leading dot.
+     */
     private function extensionForFormat(string $format): string
     {
         $format = strtolower($format);

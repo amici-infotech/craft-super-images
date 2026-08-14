@@ -1,16 +1,36 @@
 <?php
+/**
+ * Builds deterministic storage-relative paths for generated derivatives.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\services;
 
 use yii\base\Component;
 
+/**
+ * Storage Path Builder
+ *
+ * Constructs sharded, deterministic storage paths from generation identity,
+ * profile, variant, format, and optional namespace (e.g. preview dates).
+ */
 final class StoragePathBuilder extends Component
 {
     /**
      * Build a deterministic storage-relative path.
      *
-     * When `$namespace` is set (e.g. `preview/20260814`), the path becomes:
-     * `{namespace}/{prefix}/{identity}/{profile}/{variant}.ext`
+     * Default layout: `{prefix}/{identity}/{profile}/{variant}.ext`
+     * With namespace (e.g. `preview/20260814`): `{namespace}/{prefix}/{identity}/{profile}/{variant}.ext`
+     *
+     * @param string $identity The SHA-256 generation identity hash.
+     * @param string $format The output format (jpeg is stored as .jpg).
+     * @param string|null $profile Optional profile segment.
+     * @param string|null $variant Optional variant segment.
+     * @param string|null $namespace Optional namespace prefix (preview paths, etc.).
+     *
+     * @return string Storage-relative path including file extension.
      */
     public function build(
         string $identity,

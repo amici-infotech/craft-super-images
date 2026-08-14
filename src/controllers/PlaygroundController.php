@@ -20,11 +20,23 @@ use yii\web\Response;
 
 /**
  * Playground Controller
+ *
+ * Interactive CP tool for testing profile generation against a chosen asset.
  */
 class PlaygroundController extends Controller
 {
+    /**
+     * Whether anonymous requests are allowed.
+     *
+     * @var array|bool|int
+     */
     protected array|bool|int $allowAnonymous = false;
 
+    /**
+     * Renders the playground form with default profile selection.
+     *
+     * @return Response The rendered CP template response.
+     */
     public function actionIndex(): Response
     {
         $this->requirePermission('super-images:playground');
@@ -37,6 +49,13 @@ class PlaygroundController extends Controller
         ]));
     }
 
+    /**
+     * Generates all units for a profile against the posted asset.
+     *
+     * Accepts JSON when the client sends an `Accept: application/json` header.
+     *
+     * @return Response Rendered template or JSON result/failure response.
+     */
     public function actionGenerate(): Response
     {
         $this->requirePostRequest();
@@ -94,8 +113,12 @@ class PlaygroundController extends Controller
     }
 
     /**
-     * @param array{assetId: ?int, profile: string} $posted
-     * @return array<string, mixed>
+     * Builds template variables for the playground view.
+     *
+     * @param Settings $settings Plugin settings.
+     * @param array{assetId: ?int, profile: string} $posted Posted form values.
+     *
+     * @return array<string, mixed> Variables passed to the Twig template.
      */
     private function templateVars(Settings $settings, array $posted): array
     {
@@ -150,6 +173,13 @@ class PlaygroundController extends Controller
         ];
     }
 
+    /**
+     * Normalizes a posted asset ID from scalar or array input.
+     *
+     * @param mixed $value Raw posted asset ID value.
+     *
+     * @return int Parsed asset ID, or 0 when invalid.
+     */
     private function resolveAssetId(mixed $value): int
     {
         if (is_array($value)) {
@@ -160,8 +190,11 @@ class PlaygroundController extends Controller
     }
 
     /**
-     * @param array<string, array{label: string, variants: list<string>, formats: list<string>, unitCount: int}> $profiles
-     * @return list<array{label: string, value: string}>
+     * Builds select options for the profile dropdown.
+     *
+     * @param array<string, array{label: string, variants: list<string>, formats: list<string>, unitCount: int}> $profiles Profile metadata keyed by handle.
+     *
+     * @return list<array{label: string, value: string}> Select option definitions.
      */
     private function profileSelectOptions(array $profiles): array
     {

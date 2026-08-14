@@ -18,6 +18,10 @@ use yii\base\Event;
  */
 class RegisterOperationsEvent extends Event
 {
-    /** @var array<string, class-string<OperationInterface>> */
+    /**
+     * Operation class map keyed by operation handle.
+     *
+     * @var array<string, class-string<OperationInterface>>
+     */
     public array $operations = [];
 }

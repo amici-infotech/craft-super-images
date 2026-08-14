@@ -1,4 +1,10 @@
 <?php
+/**
+ * Resolves configured optimizer/encoder binary paths across environments.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\services;
 
@@ -7,8 +13,9 @@ use amici\SuperImages\support\ProcessRunner;
 use yii\base\Component;
 
 /**
- * Resolves configured optimizer/encoder binary paths across environments.
+ * Binary Resolver
  *
+ * Resolves configured optimizer/encoder binary paths across environments.
  * Prefer absolute paths (or env-driven paths) so Ubuntu hosts can pin
  * `/usr/bin/...` binaries without relying on PATH alone.
  */
@@ -21,6 +28,11 @@ final class BinaryResolver extends Component
      * 1. Explicit absolute/relative path passed by the caller
      * 2. optimizers.binaries[tool] from config
      * 3. Tool name on PATH
+     *
+     * @param string $tool The optimizer tool name (e.g. jpegoptim, cwebp).
+     * @param string|null $explicitPath Optional caller-provided path override.
+     *
+     * @return string|null The resolved absolute executable path, or null when not found.
      */
     public function resolve(string $tool, ?string $explicitPath = null): ?string
     {
@@ -43,12 +55,22 @@ final class BinaryResolver extends Component
         return $runner->resolveExecutable($tool);
     }
 
+    /**
+     * Check whether a tool binary is available on this host.
+     *
+     * @param string $tool The optimizer tool name.
+     * @param string|null $explicitPath Optional caller-provided path override.
+     *
+     * @return bool True when resolve() would return a non-null path.
+     */
     public function isAvailable(string $tool, ?string $explicitPath = null): bool
     {
         return $this->resolve($tool, $explicitPath) !== null;
     }
 
     /**
+     * Inventory all known optimizer tools with configured and resolved paths.
+     *
      * @return array<string, array{tool: string, configured: ?string, resolved: ?string, available: bool}>
      */
     public function inventory(): array
@@ -75,6 +97,13 @@ final class BinaryResolver extends Component
         return $out;
     }
 
+    /**
+     * Read the configured path for a tool from optimizers.binaries settings.
+     *
+     * @param string $tool The optimizer tool name.
+     *
+     * @return string|null The configured path string, or null when not set.
+     */
     private function configuredPath(string $tool): ?string
     {
         $binaries = $this->binariesConfig();
@@ -88,7 +117,9 @@ final class BinaryResolver extends Component
     }
 
     /**
-     * @return array<string, string>
+     * Load and normalize optimizers.binaries from plugin settings.
+     *
+     * @return array<string, string> Map of lowercase tool name to configured path.
      */
     private function binariesConfig(): array
     {
@@ -110,6 +141,11 @@ final class BinaryResolver extends Component
         return $normalized;
     }
 
+    /**
+     * Resolve the shared ProcessRunner component from the plugin.
+     *
+     * @return ProcessRunner The process runner used for executable resolution.
+     */
     private function processRunner(): ProcessRunner
     {
         return Plugin::getInstance()->getProcessRunner();

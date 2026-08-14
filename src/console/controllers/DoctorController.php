@@ -14,6 +14,8 @@ use yii\console\ExitCode;
 use yii\helpers\Console;
 
 /**
+ * Doctor Controller
+ *
  * Runs Super Images doctor checks.
  *
  *     php craft super-images/doctor
@@ -21,18 +23,30 @@ use yii\helpers\Console;
  */
 class DoctorController extends Controller
 {
-    /** @var int Emit machine-readable JSON instead of formatted text. */
+    /**
+     * Emit machine-readable JSON instead of formatted text.
+     *
+     * @var int
+     */
     public int $json = 0;
 
     /**
-     * @param string $actionID
-     * @return list<string>
+     * Returns the list of options available for this command.
+     *
+     * @param string $actionID The action ID of the controller.
+     *
+     * @return list<string> Option property names.
      */
     public function options($actionID): array
     {
         return array_merge(parent::options($actionID), ['json']);
     }
 
+    /**
+     * Runs doctor checks and prints a formatted or JSON report.
+     *
+     * @return int Console exit code; non-zero when any check fails.
+     */
     public function actionIndex(): int
     {
         $diagnostics = Plugin::getInstance()->getDiagnostics();
@@ -66,6 +80,11 @@ class DoctorController extends Controller
             : ExitCode::OK;
     }
 
+    /**
+     * Prints the doctor report header.
+     *
+     * @return void
+     */
     private function renderHeader(): void
     {
         $this->stdout("\n");
@@ -74,6 +93,13 @@ class DoctorController extends Controller
         $this->stdout(str_repeat('═', 42) . "\n\n", Console::FG_GREY);
     }
 
+    /**
+     * Prints a check group heading.
+     *
+     * @param string $label Group label.
+     *
+     * @return void
+     */
     private function renderGroupHeading(string $label): void
     {
         $this->stdout($label, Console::BOLD);
@@ -82,7 +108,12 @@ class DoctorController extends Controller
     }
 
     /**
-     * @param array{id: string, group: string, status: string, label: string, detail: string, solution?: ?string} $check
+     * Prints a single doctor check row with optional fix hint.
+     *
+     * @param array{id: string, group: string, status: string, label: string, detail: string, solution?: ?string} $check Check definition.
+     * @param int $labelWidth Column width for check labels.
+     *
+     * @return void
      */
     private function renderCheck(array $check, int $labelWidth): void
     {
@@ -111,7 +142,11 @@ class DoctorController extends Controller
     }
 
     /**
-     * @param array{pass: int, warn: int, fail: int, total: int} $summary
+     * Prints the pass/warn/fail summary footer.
+     *
+     * @param array{pass: int, warn: int, fail: int, total: int} $summary Result counts.
+     *
+     * @return void
      */
     private function renderSummary(array $summary): void
     {
@@ -134,7 +169,11 @@ class DoctorController extends Controller
     }
 
     /**
-     * @param list<array{id: string, label: string, checks: list<array{label: string}>}> $groups
+     * Computes the label column width for aligned check output.
+     *
+     * @param list<array{id: string, label: string, checks: list<array{label: string}>}> $groups Doctor report groups.
+     *
+     * @return int Label column width (capped at 22).
      */
     private function maxLabelWidth(array $groups): int
     {

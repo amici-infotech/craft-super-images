@@ -24,18 +24,41 @@ use yii\helpers\Json;
  */
 class CleanupController extends Controller
 {
-    /** @var int Dry-run when 1 (default). Set 0 with --force to delete. */
+    /**
+     * Dry-run when 1 (default). Set 0 with --force to delete.
+     *
+     * @var int
+     */
     public int $dryRun = 1;
 
-    /** @var int Restrict to preview/ namespace cleanup (always true for now). */
+    /**
+     * Restrict to preview/ namespace cleanup (always true for now).
+     *
+     * @var int
+     */
     public int $previewsOnly = 1;
 
-    /** @var int Required with --dry-run=0 to actually delete. */
+    /**
+     * Required with --dry-run=0 to actually delete.
+     *
+     * @var int
+     */
     public int $force = 0;
 
-    /** @var int|null Override cleanup.previewRetentionDays */
+    /**
+     * Override `cleanup.previewRetentionDays` from config.
+     *
+     * @var int|null
+     */
     public ?int $retentionDays = null;
 
+    /**
+     * Returns the list of options available for this command.
+     *
+     * @param string $actionID The action ID of the controller.
+     *
+     * @return list<string> Option property names.
+     */
     public function options($actionID): array
     {
         return array_merge(parent::options($actionID), [
@@ -46,6 +69,11 @@ class CleanupController extends Controller
         ]);
     }
 
+    /**
+     * Returns option name aliases.
+     *
+     * @return array<string, string> Alias map.
+     */
     public function optionAliases(): array
     {
         return [
@@ -54,6 +82,11 @@ class CleanupController extends Controller
         ];
     }
 
+    /**
+     * Removes stale preview artifacts and prints a JSON summary.
+     *
+     * @return int Console exit code.
+     */
     public function actionIndex(): int
     {
         $dryRun = $this->dryRun !== 0;

@@ -1,17 +1,33 @@
 <?php
+/**
+ * Allow-listed local filesystem path resolution.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\support;
 
 use amici\SuperImages\exceptions\SourceException;
 use Craft;
 
+/**
+ * Path Guard
+ *
+ * Resolves and canonicalizes local source paths, ensuring they remain within
+ * configured allowed root directories before generation reads them.
+ */
 final class PathGuard
 {
-    /** @var list<string> */
+    /**
+     * Canonical absolute allowed root directories.
+     *
+     * @var list<string>
+     */
     private array $_allowedRoots;
 
     /**
-     * @param list<string> $allowedRoots
+     * @param list<string> $allowedRoots Craft aliases or absolute paths defining permitted roots.
      */
     public function __construct(array $allowedRoots)
     {
@@ -21,6 +37,15 @@ final class PathGuard
         )));
     }
 
+    /**
+     * Resolve a user-provided path to a canonical file within allowed roots.
+     *
+     * @param string $path Absolute path, web-relative path, or Craft alias.
+     *
+     * @return string Canonical absolute filesystem path to an existing file.
+     *
+     * @throws SourceException When the path is empty, not a file, or outside allowed roots.
+     */
     public function resolve(string $path): string
     {
         $path = trim($path);
@@ -57,6 +82,13 @@ final class PathGuard
         throw new SourceException('Local path is outside allowed roots.');
     }
 
+    /**
+     * Canonicalize a filesystem path, resolving symlinks when possible.
+     *
+     * @param string $path Raw path string.
+     *
+     * @return string Canonical path without trailing separators.
+     */
     public static function canonicalize(string $path): string
     {
         $real = realpath($path);

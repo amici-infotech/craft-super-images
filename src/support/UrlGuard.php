@@ -1,14 +1,36 @@
 <?php
+/**
+ * Allow-listed remote URL validation and safe downloading.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\support;
 
 use amici\SuperImages\exceptions\SourceException;
 
+/**
+ * URL Guard
+ *
+ * Validates remote source URLs against an allow-list, blocks private/reserved IP
+ * ranges, and downloads content with redirect, size, and timeout limits.
+ */
 final class UrlGuard
 {
-    /** @var list<string> */
+    /**
+     * Normalized lowercase allowed host patterns.
+     *
+     * @var list<string>
+     */
     private array $_allowedHosts;
 
+    /**
+     * @param list<string> $allowedHosts Host allow-list entries; supports exact hosts and *.suffix wildcards.
+     * @param int $timeoutSeconds HTTP read timeout in seconds.
+     * @param int $maxBytes Maximum response body size in bytes.
+     * @param int $maxRedirects Maximum number of redirects to follow.
+     */
     public function __construct(
         array $allowedHosts,
         private int $timeoutSeconds = 10,
@@ -21,6 +43,15 @@ final class UrlGuard
         )));
     }
 
+    /**
+     * Validate a remote URL without downloading it.
+     *
+     * @param string $url The remote HTTP(S) URL.
+     *
+     * @return string The validated URL string unchanged.
+     *
+     * @throws SourceException When the URL is invalid, disallowed, or resolves to a private address.
+     */
     public function validate(string $url): string
     {
         $url = trim($url);
@@ -52,7 +83,13 @@ final class UrlGuard
     }
 
     /**
-     * @return array{body: string, mime: ?string}
+     * Validate and download a remote URL with redirect and size limits.
+     *
+     * @param string $url The remote HTTP(S) URL.
+     *
+     * @return array{body: string, mime: ?string} Downloaded body and optional Content-Type MIME.
+     *
+     * @throws SourceException When validation, redirect, size, or HTTP status checks fail.
      */
     public function download(string $url): array
     {
@@ -128,6 +165,13 @@ final class UrlGuard
         ];
     }
 
+    /**
+     * Check whether a host matches the allow-list.
+     *
+     * @param string $host Lowercase hostname from the URL.
+     *
+     * @return bool True when the host is explicitly allowed or matches a wildcard entry.
+     */
     private function _isHostAllowed(string $host): bool
     {
         if ($this->_allowedHosts === []) {
@@ -147,6 +191,15 @@ final class UrlGuard
         return false;
     }
 
+    /**
+     * Reject hosts that resolve to private or reserved IP ranges.
+     *
+     * @param string $host Hostname or IP address to inspect.
+     *
+     * @return void
+     *
+     * @throws SourceException When localhost or a private/reserved address is detected.
+     */
     private function _assertNotPrivateHost(string $host): void
     {
         if ($host === 'localhost') {
@@ -178,6 +231,13 @@ final class UrlGuard
         }
     }
 
+    /**
+     * Determine whether an IP address is publicly routable.
+     *
+     * @param string $ip IPv4 or IPv6 address string.
+     *
+     * @return bool True when the IP is not in private or reserved ranges.
+     */
     private function _isPublicIp(string $ip): bool
     {
         return filter_var(
@@ -188,7 +248,11 @@ final class UrlGuard
     }
 
     /**
-     * @param list<string> $headers
+     * Parse the HTTP status code from response header lines.
+     *
+     * @param list<string> $headers Raw HTTP response header lines.
+     *
+     * @return int HTTP status code, or 0 when not found.
      */
     private function _extractStatusCode(array $headers): int
     {
@@ -204,7 +268,12 @@ final class UrlGuard
     }
 
     /**
-     * @param list<string> $headers
+     * Extract a named response header value.
+     *
+     * @param list<string> $headers Raw HTTP response header lines.
+     * @param string $name Header name (case-insensitive).
+     *
+     * @return string|null Header value without the name prefix, or null when absent.
      */
     private function _extractHeader(array $headers, string $name): ?string
     {
@@ -217,6 +286,14 @@ final class UrlGuard
         return null;
     }
 
+    /**
+     * Resolve a relative redirect Location against the current URL.
+     *
+     * @param string $baseUrl The URL that issued the redirect.
+     * @param string $location The Location header value.
+     *
+     * @return string Absolute redirect target URL.
+     */
     private function _resolveRedirect(string $baseUrl, string $location): string
     {
         if (str_starts_with($location, 'http://') || str_starts_with($location, 'https://')) {

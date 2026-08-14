@@ -1,4 +1,10 @@
 <?php
+/**
+ * Plans delivery URLs for Twig without storage I/O.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\services;
 
@@ -10,10 +16,20 @@ use amici\SuperImages\Plugin;
 use yii\base\Component;
 
 /**
- * Plans delivery URLs for Twig without storage I/O.
+ * Delivery URL Service
+ *
+ * Plans which URL Twig should emit (direct storage vs signed runtime URL) based on
+ * delivery mode, without reading from storage or generating derivatives.
  */
 final class DeliveryUrlService extends Component
 {
+    /**
+     * Plan delivery metadata for a generation request.
+     *
+     * @param GenerationRequest $request The generation request with source and transform options.
+     *
+     * @return PlannedDelivery Delivery plan including storage URL, delivery URL, and dimension hints.
+     */
     public function plan(GenerationRequest $request): PlannedDelivery
     {
         $plugin = Plugin::getInstance();
@@ -55,7 +71,11 @@ final class DeliveryUrlService extends Component
     }
 
     /**
-     * @return array{0: ?int, 1: ?int}
+     * Extract width/height hints from the first geometry operation in the config.
+     *
+     * @param EffectiveConfig $config The resolved effective configuration.
+     *
+     * @return array{0: ?int, 1: ?int} Tuple of [widthHint, heightHint].
      */
     private function dimensionHints(EffectiveConfig $config): array
     {

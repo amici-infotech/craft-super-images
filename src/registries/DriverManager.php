@@ -1,4 +1,10 @@
 <?php
+/**
+ * Registry and selector for image processing drivers.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\registries;
 
@@ -12,17 +18,36 @@ use yii\base\Component;
 
 /**
  * Driver Manager
+ *
+ * Registers GD, Imagick, and libvips drivers and selects an available driver
+ * based on explicit preference or automatic fallback order.
  */
 class DriverManager extends Component
 {
+    /**
+     * Event fired after built-in drivers are registered so plugins can add custom drivers.
+     */
     public const EVENT_REGISTER_DRIVERS = 'registerDrivers';
 
-    /** @var array<string, ImageDriverInterface> */
+    /**
+     * Registered driver instances keyed by driver name.
+     *
+     * @var array<string, ImageDriverInterface>
+     */
     private array $_drivers = [];
 
-    /** @var list<string> */
+    /**
+     * Fallback order used when preference is auto or empty.
+     *
+     * @var list<string>
+     */
     private array $_fallbackOrder = ['libvips', 'imagick', 'gd'];
 
+    /**
+     * Register built-in drivers and trigger the register event for extensions.
+     *
+     * @return void
+     */
     public function registerDefaults(): void
     {
         $this->register(new LibvipsDriver());
@@ -37,11 +62,27 @@ class DriverManager extends Component
         }
     }
 
+    /**
+     * Register an image driver implementation.
+     *
+     * @param ImageDriverInterface $driver The driver instance to register.
+     *
+     * @return void
+     */
     public function register(ImageDriverInterface $driver): void
     {
         $this->_drivers[$driver->name()] = $driver;
     }
 
+    /**
+     * Select an available image driver by preference or automatic fallback.
+     *
+     * @param string|null $preference Driver name, or auto/null for fallback order.
+     *
+     * @return ImageDriverInterface The selected available driver.
+     *
+     * @throws DriverUnavailableException When the requested driver is unavailable or none exist.
+     */
     public function select(?string $preference = 'auto'): ImageDriverInterface
     {
         if ($preference !== null && $preference !== '' && $preference !== 'auto') {
@@ -64,7 +105,9 @@ class DriverManager extends Component
     }
 
     /**
-     * @return list<ImageDriverInterface>
+     * Return all registered driver instances.
+     *
+     * @return list<ImageDriverInterface> Registered drivers in registration order values.
      */
     public function all(): array
     {

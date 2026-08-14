@@ -42,27 +42,37 @@ class Plugin extends CraftPlugin
     use PluginTrait;
 
     /**
-     * @var Plugin|null Singleton plugin instance.
+     * Singleton plugin instance set during {@see init()}.
+     *
+     * @var Plugin|null
      */
     public static ?Plugin $plugin = null;
 
     /**
-     * @var string Database schema version.
+     * Database schema version for plugin migrations.
+     *
+     * @var string
      */
     public string $schemaVersion = '5.0.0';
 
     /**
-     * @var bool Whether the plugin has a settings UI.
+     * Whether the plugin exposes a settings model in the Craft plugin store UI.
+     *
+     * @var bool
      */
     public bool $hasCpSettings = true;
 
     /**
-     * @var bool Whether the plugin has a CP section.
+     * Whether the plugin registers a dedicated Control Panel section.
+     *
+     * @var bool
      */
     public bool $hasCpSection = true;
 
     /**
      * Initializes the plugin and registers core engine components.
+     *
+     * @return void
      */
     public function init(): void
     {
@@ -87,7 +97,9 @@ class Plugin extends CraftPlugin
     }
 
     /**
-     * Creates the plugin settings model.
+     * Creates the plugin settings model populated from `config/super-images.php`.
+     *
+     * @return Settings|null The settings model instance.
      */
     protected function createSettingsModel(): ?Model
     {
@@ -96,6 +108,8 @@ class Plugin extends CraftPlugin
 
     /**
      * Redirects Craft plugin settings access to the Super Images settings page.
+     *
+     * @return mixed HTTP redirect response.
      */
     public function getSettingsResponse(): mixed
     {
@@ -104,6 +118,10 @@ class Plugin extends CraftPlugin
 
     /**
      * Builds the Control Panel navigation item and subnavigation.
+     *
+     * Subnav entries are filtered by user permissions.
+     *
+     * @return array<string, mixed>|null CP nav item definition, or null when unavailable.
      */
     public function getCpNavItem(): ?array
     {
@@ -154,6 +172,8 @@ class Plugin extends CraftPlugin
 
     /**
      * Returns the SVG mask icon path used by the Craft CP navigation.
+     *
+     * @return string|null Absolute path to `icon-mask.svg`, or null when not used.
      */
     protected function cpNavIconPath(): ?string
     {
@@ -162,6 +182,8 @@ class Plugin extends CraftPlugin
 
     /**
      * Registers the Twig variable (`craft.superImages`).
+     *
+     * @return void
      */
     private function _registerTwig(): void
     {
@@ -178,6 +200,8 @@ class Plugin extends CraftPlugin
 
     /**
      * Enqueues eager generation after asset saves when auto-generate is enabled.
+     *
+     * @return void
      */
     private function _registerAssetEvents(): void
     {
@@ -198,6 +222,8 @@ class Plugin extends CraftPlugin
 
     /**
      * Registers Super Images Control Panel URL rules.
+     *
+     * @return void
      */
     private function _registerCpRoutes(): void
     {
@@ -219,6 +245,8 @@ class Plugin extends CraftPlugin
 
     /**
      * Registers Super Images user permissions.
+     *
+     * @return void
      */
     private function _registerPermissions(): void
     {

@@ -1,4 +1,10 @@
 <?php
+/**
+ * Shared image driver helpers and operation dispatch.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\drivers;
 
@@ -9,8 +15,23 @@ use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\Dimensions;
 use amici\SuperImages\models\ImageHandle;
 
+/**
+ * Abstract Driver
+ *
+ * Provides common geometry helpers and delegates supported operations to operation objects.
+ */
 abstract class AbstractDriver implements ImageDriverInterface
 {
+    /**
+     * Applies an operation to an image handle when the driver and operation both support it.
+     *
+     * @param ImageHandle $handle The current in-memory image handle.
+     * @param OperationInterface $operation The operation to apply.
+     *
+     * @return ImageHandle A new handle reflecting the transformed image.
+     *
+     * @throws UnsupportedOperationException When the driver or operation cannot process the request.
+     */
     public function apply(ImageHandle $handle, OperationInterface $operation): ImageHandle
     {
         if (!$this->supports($operation->name())) {
@@ -28,6 +49,16 @@ abstract class AbstractDriver implements ImageDriverInterface
         return $operation->apply($handle, $this);
     }
 
+    /**
+     * Ensures a dimension value is either null or a positive integer.
+     *
+     * @param int|null $value The dimension value to validate.
+     * @param string $label Human-readable label used in error messages.
+     *
+     * @return int|null The validated dimension, or null when not provided.
+     *
+     * @throws ProcessingException When the value is zero or negative.
+     */
     protected function assertPositiveDimension(?int $value, string $label): ?int
     {
         if ($value === null) {
@@ -42,7 +73,15 @@ abstract class AbstractDriver implements ImageDriverInterface
     }
 
     /**
-     * @return array{0: int, 1: int, 2: int, 3: int}
+     * Calculates a source crop box that preserves the target aspect ratio.
+     *
+     * @param int $sourceWidth Source image width in pixels.
+     * @param int $sourceHeight Source image height in pixels.
+     * @param int $targetWidth Desired output width in pixels.
+     * @param int $targetHeight Desired output height in pixels.
+     * @param string $position Crop anchor in the form "xAlign-yAlign" (e.g. "center-center").
+     *
+     * @return array{0: int, 1: int, 2: int, 3: int} Tuple of [srcX, srcY, cropWidth, cropHeight].
      */
     protected function calculateCropBox(
         int $sourceWidth,
@@ -71,7 +110,11 @@ abstract class AbstractDriver implements ImageDriverInterface
     }
 
     /**
-     * @return array{0: string, 1: string}
+     * Parses a position string into horizontal and vertical alignment tokens.
+     *
+     * @param string $position Position string such as "left-top" or "center-center".
+     *
+     * @return array{0: string, 1: string} Tuple of [xAlign, yAlign].
      */
     protected function parsePosition(string $position): array
     {
@@ -82,6 +125,15 @@ abstract class AbstractDriver implements ImageDriverInterface
         return [$x, $y];
     }
 
+    /**
+     * Calculates the offset for aligning a crop region within a source dimension.
+     *
+     * @param int $source Total source dimension (width or height).
+     * @param int $crop Crop dimension along the same axis.
+     * @param string $align Alignment token: left, right, top, bottom, or center.
+     *
+     * @return int Pixel offset from the origin.
+     */
     protected function alignOffset(int $source, int $crop, string $align): int
     {
         return match ($align) {
@@ -92,7 +144,14 @@ abstract class AbstractDriver implements ImageDriverInterface
     }
 
     /**
-     * @return array{0: int, 1: int}
+     * Calculates output dimensions that fit within optional max bounds while preserving aspect ratio.
+     *
+     * @param int $sourceWidth Source image width in pixels.
+     * @param int $sourceHeight Source image height in pixels.
+     * @param int|null $maxWidth Maximum allowed output width, or null for no limit.
+     * @param int|null $maxHeight Maximum allowed output height, or null for no limit.
+     *
+     * @return array{0: int, 1: int} Tuple of [width, height], each at least 1.
      */
     protected function calculateFitDimensions(
         int $sourceWidth,
@@ -116,6 +175,14 @@ abstract class AbstractDriver implements ImageDriverInterface
         return [max(1, $width), max(1, $height)];
     }
 
+    /**
+     * Returns a copy of the handle with updated width and height metadata.
+     *
+     * @param ImageHandle $handle The handle whose metadata should be updated.
+     * @param Dimensions $dimensions The new dimensions to apply.
+     *
+     * @return ImageHandle A handle with refreshed dimension metadata.
+     */
     protected function updateHandleDimensions(ImageHandle $handle, Dimensions $dimensions): ImageHandle
     {
         return $handle->withDimensions($dimensions->width, $dimensions->height);

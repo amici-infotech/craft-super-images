@@ -1,4 +1,10 @@
 <?php
+/**
+ * Single entry point for derivative image generation.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\services;
 
@@ -19,17 +25,39 @@ use yii\base\Component;
 /**
  * Generation Service
  *
- * Single entry point for derivative generation. CLI/queue/runtime/Twig must call this.
+ * Orchestrates the full derivative pipeline: planning, source loading, operations,
+ * encoding, optimization, and storage. CLI, queue, runtime, and Twig integrations
+ * must call this service rather than invoking drivers or encoders directly.
  */
 class GenerationService extends Component
 {
+    /**
+     * Event fired before a derivative is generated (including skip checks).
+     */
     public const EVENT_BEFORE_GENERATE = 'beforeGenerate';
+
+    /**
+     * Event fired after generation completes or is skipped because output already exists.
+     */
     public const EVENT_AFTER_GENERATE = 'afterGenerate';
+
+    /**
+     * Event fired immediately before the encoded image is written to storage.
+     */
     public const EVENT_BEFORE_ENCODE = 'beforeEncode';
+
+    /**
+     * Event fired immediately after encoding and before optimization.
+     */
     public const EVENT_AFTER_ENCODE = 'afterEncode';
 
     /**
      * Plan a derivative without processing, encoding, or storage I/O.
+     *
+     * Resolves configuration, builds the generation definition, calculates identity,
+     * and returns storage metadata suitable for manifests and URL planning.
+     *
+     * @param GenerationRequest $request The generation request with source, profile, variant, and format.
      *
      * @return array{
      *     identity: string,
@@ -39,6 +67,8 @@ class GenerationService extends Component
      *     driverName: string,
      *     storageUrl: string,
      * }
+     *
+     * @throws SourceException When the request does not include exactly one source.
      */
     public function plan(GenerationRequest $request): array
     {
@@ -79,6 +109,18 @@ class GenerationService extends Component
 
     /**
      * Generate one derivative for the given request.
+     *
+     * Skips processing when output already exists unless `$force` is true. Loads the
+     * source, applies operations, encodes, optionally optimizes, writes to storage,
+     * and records existence markers for remote adapters.
+     *
+     * @param GenerationRequest $request The generation request with source, profile, variant, and format.
+     * @param bool $force When true, regenerate even if the derivative already exists in storage.
+     *
+     * @return GenerationResult The generation outcome including URL, dimensions, and diagnostics.
+     *
+     * @throws SourceException When the request does not include exactly one source.
+     * @throws ProcessingException When encoded output is empty or has invalid dimensions.
      */
     public function generate(GenerationRequest $request, bool $force = false): GenerationResult
     {
@@ -236,6 +278,16 @@ class GenerationService extends Component
         }
     }
 
+    /**
+     * Build the storage namespace segment for preview generations.
+     *
+     * Preview derivatives are stored under `preview/{YYYYMMDD}/` so they can be
+     * cleaned up independently of production output.
+     *
+     * @param GenerationRequest $request The generation request; preview flag controls namespace.
+     *
+     * @return string|null The namespace prefix, or null for non-preview requests.
+     */
     private function previewNamespace(GenerationRequest $request): ?string
     {
         if (!$request->preview) {
@@ -245,6 +297,15 @@ class GenerationService extends Component
         return 'preview/' . date('Ymd');
     }
 
+    /**
+     * Ensure the generation request specifies exactly one source.
+     *
+     * @param GenerationRequest $request The generation request to validate.
+     *
+     * @return void
+     *
+     * @throws SourceException When zero or multiple sources are provided.
+     */
     private function validateRequest(GenerationRequest $request): void
     {
         if ($request->sourceCount() !== 1) {
@@ -252,6 +313,15 @@ class GenerationService extends Component
         }
     }
 
+    /**
+     * Validate that encoded output has usable dimensions and payload.
+     *
+     * @param EncodedImage $encoded The encoded image produced by the encoder/optimizer pipeline.
+     *
+     * @return void
+     *
+     * @throws ProcessingException When size, dimensions, or payload are invalid.
+     */
     private function validateEncodedOutput(EncodedImage $encoded): void
     {
         if ($encoded->size <= 0) {
@@ -267,6 +337,13 @@ class GenerationService extends Component
         }
     }
 
+    /**
+     * Map an output format string to its MIME type.
+     *
+     * @param string $format The output format (e.g. webp, jpg, avif).
+     *
+     * @return string The corresponding MIME type, or application/octet-stream for unknown formats.
+     */
     private function mimeFromFormat(string $format): string
     {
         return match (strtolower($format)) {
@@ -279,6 +356,13 @@ class GenerationService extends Component
         };
     }
 
+    /**
+     * Normalize a format key for optimizer/encoder config lookup.
+     *
+     * @param string $format The output format string.
+     *
+     * @return string The normalized key (jpg becomes jpeg).
+     */
     private function normalizeFormatKey(string $format): string
     {
         $format = strtolower($format);

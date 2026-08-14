@@ -18,11 +18,22 @@ use yii\base\Component;
 
 /**
  * Operation Pipeline
+ *
+ * Resolves operation definitions from the registry and applies them sequentially to an image handle.
+ * Throws when a definition is invalid or the active driver does not support a requested operation.
  */
 class OperationPipeline extends Component
 {
     /**
-     * @param list<OperationDefinition> $definitions
+     * Applies each operation definition to the image handle in order.
+     *
+     * @param ImageHandle $handle The image to transform.
+     * @param ImageDriverInterface $driver The active image driver.
+     * @param list<OperationDefinition> $definitions Normalized operations to apply.
+     *
+     * @return ImageHandle The image handle after all operations have been applied.
+     *
+     * @throws UnsupportedOperationException When the driver does not support an operation.
      */
     public function apply(ImageHandle $handle, ImageDriverInterface $driver, array $definitions): ImageHandle
     {
@@ -44,8 +55,13 @@ class OperationPipeline extends Component
     }
 
     /**
-     * @param list<array<string, mixed>> $rawOperations
+     * Converts raw operation arrays into normalized {@see OperationDefinition} instances.
+     *
+     * @param list<array<string, mixed>> $rawOperations Operation arrays from profile or request config.
+     *
      * @return list<OperationDefinition>
+     *
+     * @throws InvalidOperationException When an entry is not an array.
      */
     public function normalizeDefinitions(array $rawOperations): array
     {

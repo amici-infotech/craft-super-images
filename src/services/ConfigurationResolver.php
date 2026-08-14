@@ -1,4 +1,10 @@
 <?php
+/**
+ * Resolves effective generation configuration from settings and request context.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\services;
 
@@ -17,11 +23,33 @@ use craft\models\Volume;
 use craft\models\VolumeFolder;
 use yii\base\Component;
 
+/**
+ * Configuration Resolver
+ *
+ * Merges plugin settings, volume/folder/field scope overrides, and request parameters
+ * into an EffectiveConfig and GenerationDefinition. Results are cached per request fingerprint.
+ */
 final class ConfigurationResolver extends Component
 {
-    /** @var array<string, EffectiveConfig> */
+    /**
+     * In-memory cache of resolved EffectiveConfig objects keyed by request hash.
+     *
+     * @var array<string, EffectiveConfig>
+     */
     private array $_cache = [];
 
+    /**
+     * Resolve the effective configuration for a generation request.
+     *
+     * Applies scope overrides (volume, folder, field), resolves profile/variant/format,
+     * merges operations and encoder options, and caches the result.
+     *
+     * @param GenerationRequest $request The generation request with optional scope context.
+     *
+     * @return EffectiveConfig The fully merged configuration for this request.
+     *
+     * @throws InvalidConfigurationException When the resolved profile is not defined.
+     */
     public function resolve(GenerationRequest $request): EffectiveConfig
     {
         $settings = Plugin::getInstance()->getSettings();
@@ -90,6 +118,16 @@ final class ConfigurationResolver extends Component
         return $this->_cache[$cacheKey] = $effective;
     }
 
+    /**
+     * Build a GenerationDefinition from resolved config and source identity.
+     *
+     * @param GenerationRequest $request The original generation request.
+     * @param EffectiveConfig $config The resolved effective configuration.
+     * @param string $sourceIdentity The stable identity string for the source image.
+     * @param string $driverName The selected image driver name.
+     *
+     * @return GenerationDefinition The immutable definition used for identity calculation and generation.
+     */
     public function buildDefinition(
         GenerationRequest $request,
         EffectiveConfig $config,
@@ -117,8 +155,12 @@ final class ConfigurationResolver extends Component
     }
 
     /**
-     * @param array<string, mixed> $layer
-     * @return array<string, mixed>
+     * Merge volume, folder, and field scope overrides into the config layer.
+     *
+     * @param array<string, mixed> $layer The base configuration layer from settings.
+     * @param GenerationRequest $request The request carrying optional volume, folder, and field context.
+     *
+     * @return array<string, mixed> The merged configuration layer.
      */
     private function applyScopeOverrides(array $layer, GenerationRequest $request): array
     {
@@ -139,6 +181,16 @@ final class ConfigurationResolver extends Component
         return $layer;
     }
 
+    /**
+     * Resolve a VariantDefinition from global variants, profile variants, or transforms.
+     *
+     * @param Settings $settings Plugin settings containing global variant definitions.
+     * @param ProfileDefinition $profile The active profile definition.
+     * @param string $variantName The requested variant name or numeric transform index.
+     * @param GenerationRequest $request The generation request (unused; reserved for future overrides).
+     *
+     * @return VariantDefinition The resolved variant with merged profile defaults.
+     */
     private function resolveVariant(
         Settings $settings,
         ProfileDefinition $profile,
@@ -198,9 +250,10 @@ final class ConfigurationResolver extends Component
     /**
      * Append profile-level effect defaults (e.g. sharpen) after geometry ops.
      *
-     * @param list<OperationDefinition> $operations
-     * @param array<string, mixed> $defaults
-     * @return list<OperationDefinition>
+     * @param list<OperationDefinition> $operations The geometry operations from the variant.
+     * @param array<string, mixed> $defaults Profile-level default effect settings.
+     *
+     * @return list<OperationDefinition> The operations list with effect defaults appended.
      */
     private function mergeProfileDefaultOperations(array $operations, array $defaults): array
     {
@@ -234,7 +287,13 @@ final class ConfigurationResolver extends Component
     }
 
     /**
-     * @return array<string, mixed>
+     * Resolve encoder options for a format, applying profile quality overrides.
+     *
+     * @param Settings $settings Plugin settings containing encoder configuration.
+     * @param string $format The output format (e.g. webp, jpg).
+     * @param ProfileDefinition $profile The active profile definition.
+     *
+     * @return array<string, mixed> The merged encoder options for this format.
      */
     private function resolveEncoderOptions(Settings $settings, string $format, ProfileDefinition $profile): array
     {
@@ -248,6 +307,14 @@ final class ConfigurationResolver extends Component
         return is_array($options) ? $options : [];
     }
 
+    /**
+     * Build a cache key fingerprint for a generation request and settings snapshot.
+     *
+     * @param GenerationRequest $request The generation request.
+     * @param Settings $settings The current plugin settings.
+     *
+     * @return string An MD5 hash of the request and config fingerprint.
+     */
     private function cacheKey(GenerationRequest $request, Settings $settings): string
     {
         return md5(json_encode([

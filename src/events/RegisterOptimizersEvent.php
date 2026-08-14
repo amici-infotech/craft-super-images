@@ -13,9 +13,15 @@ use yii\base\Event;
 
 /**
  * Register Optimizers Event
+ *
+ * Append optimizer instances to `$optimizers` during registration.
  */
 class RegisterOptimizersEvent extends Event
 {
-    /** @var list<OptimizerInterface> */
+    /**
+     * Optimizer instances to register.
+     *
+     * @var list<OptimizerInterface>
+     */
     public array $optimizers = [];
 }

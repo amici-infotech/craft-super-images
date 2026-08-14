@@ -1,4 +1,10 @@
 <?php
+/**
+ * Padding composition operation.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\operations\composition;
 
@@ -9,13 +15,33 @@ use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
 
+/**
+ * Padding Operation
+ *
+ * Adds padding around the image on each side.
+ * Supported options: `top`, `right`, `bottom`, `left`, or uniform `size` (default: 0), `color` (default: "#ffffff").
+ * Supported drivers: GD, Imagick.
+ */
 final class Padding extends AbstractOperation
 {
+    /**
+     * Returns the operation identifier.
+     *
+     * @return string
+     */
     public function name(): string
     {
         return 'padding';
     }
 
+    /**
+     * Adds padding to the image via the active driver.
+     *
+     * @param ImageHandle $handle The image to pad.
+     * @param ImageDriverInterface $driver The active image driver.
+     *
+     * @return ImageHandle The padded image handle.
+     */
     public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle
     {
         $top = (int)($this->options['top'] ?? $this->options['size'] ?? 0);

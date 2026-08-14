@@ -1,16 +1,27 @@
 <?php
+/**
+ * Ubuntu apt install hints for missing drivers and optimizer binaries.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\support;
 
 /**
- * Ubuntu apt install hints for missing drivers and optimizer binaries.
+ * Ubuntu Install Hints
  *
+ * Provides apt-focused install commands and notes for the diagnostics doctor.
  * Live servers are assumed to be Ubuntu; hints are intentionally apt-focused.
  */
 final class UbuntuInstallHints
 {
     /**
-     * @return array{package: string, command: string, notes: string}|null
+     * Return an install hint for a missing image driver.
+     *
+     * @param string $driver Driver name: gd, imagick, or libvips.
+     *
+     * @return array{package: string, command: string, notes: string}|null Hint array, or null for unknown drivers.
      */
     public static function forDriver(string $driver): ?array
     {
@@ -35,7 +46,11 @@ final class UbuntuInstallHints
     }
 
     /**
-     * @return array{package: string, command: string, notes: string}|null
+     * Return an install hint for a missing optimizer binary.
+     *
+     * @param string $tool Optimizer tool name (jpegoptim, cwebp, avifenc, etc.).
+     *
+     * @return array{package: string, command: string, notes: string}|null Hint array, or null for unknown tools.
      */
     public static function forBinary(string $tool): ?array
     {

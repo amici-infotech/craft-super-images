@@ -15,11 +15,23 @@ use yii\web\Response;
 
 /**
  * Encoders Controller
+ *
+ * Lists driver, binary, and operation capabilities with install hints.
  */
 class EncodersController extends Controller
 {
+    /**
+     * Whether anonymous requests are allowed.
+     *
+     * @var array|bool|int
+     */
     protected array|bool|int $allowAnonymous = false;
 
+    /**
+     * Renders the encoders and optimizers overview.
+     *
+     * @return Response The rendered CP template response.
+     */
     public function actionIndex(): Response
     {
         $this->requirePermission('super-images:view');

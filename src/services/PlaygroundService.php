@@ -20,14 +20,24 @@ use yii\base\Component;
 /**
  * Playground Service
  *
- * Permissions are enforced by controllers, not this service.
+ * Generates preview derivatives for CP playground UI, builds responsive HTML samples,
+ * and returns Twig code snippets. Permissions are enforced by controllers, not this service.
  */
 class PlaygroundService extends Component
 {
     /**
      * Generate every variant × format for a profile and return a preview gallery payload.
      *
-     * @return array<string, mixed>
+     * Forces regeneration (`preview: true`) for each manifest unit and collects success/failure
+     * metadata, savings percentages, and sample Twig/HTML output.
+     *
+     * @param int $assetId The Craft asset ID to generate previews for.
+     * @param string|null $profile The profile handle; defaults to plugin defaultProfile when null.
+     *
+     * @return array<string, mixed> Gallery payload with units, errors, summary, code samples, and responsive HTML.
+     *
+     * @throws SourceException When the asset is not found.
+     * @throws InvalidConfigurationException When the profile is not defined.
      */
     public function generateProfile(int $assetId, ?string $profile = null): array
     {
@@ -167,10 +177,15 @@ class PlaygroundService extends Component
     /**
      * Build a real multi-width `<picture>` from generated preview URLs.
      *
-     * @param list<array<string, mixed>> $items
-     * @param list<string> $formats
-     * @param list<string> $variants
-     * @return array{markup: string, pretty: string}|null
+     * Orders source formats by modern-browser preference (avif → webp → jpg → png)
+     * and builds srcset entries from variant widths.
+     *
+     * @param list<array<string, mixed>> $items Generated preview items with url, format, variant, and dimensions.
+     * @param list<string> $formats Preferred format order from the profile.
+     * @param list<string> $variants Variant names in display order.
+     * @param string $alt Alt text for the fallback `<img>` element.
+     *
+     * @return array{markup: string, pretty: string}|null Markup strings, or null when no successful items exist.
      */
     private function buildResponsiveHtml(array $items, array $formats, array $variants, string $alt): ?array
     {
@@ -260,8 +275,12 @@ class PlaygroundService extends Component
     }
 
     /**
-     * @param list<array<string, mixed>> $items
-     * @param list<string> $variants
+     * Build a comma-separated srcset string from items grouped by variant.
+     *
+     * @param list<array<string, mixed>> $items Generated items for a single format.
+     * @param list<string> $variants Variant names in srcset order.
+     *
+     * @return string The srcset attribute value, or an empty string when no matches exist.
      */
     private function srcsetFromItems(array $items, array $variants): string
     {
@@ -285,9 +304,12 @@ class PlaygroundService extends Component
     }
 
     /**
-     * @param list<array<string, mixed>> $items
-     * @param list<string> $variants
-     * @return array<string, mixed>
+     * Pick the best fallback item, preferring the `md` variant or the middle variant.
+     *
+     * @param list<array<string, mixed>> $items Generated items for a single format.
+     * @param list<string> $variants Variant names in priority order.
+     *
+     * @return array<string, mixed> The selected item metadata array.
      */
     private function pickFallbackItem(array $items, array $variants): array
     {
@@ -309,14 +331,25 @@ class PlaygroundService extends Component
     }
 
     /**
-     * @param list<array<string, mixed>> $items
-     * @param list<string> $variants
+     * Resolve the fallback URL from the best matching variant item.
+     *
+     * @param list<array<string, mixed>> $items Generated items for a single format.
+     * @param list<string> $variants Variant names in priority order.
+     *
+     * @return string The fallback image URL, or an empty string when none is available.
      */
     private function pickFallbackUrl(array $items, array $variants): string
     {
         return (string) ($this->pickFallbackItem($items, $variants)['url'] ?? '');
     }
 
+    /**
+     * Map an output format string to its MIME type for `<source type="">`.
+     *
+     * @param string $format The output format (e.g. webp, jpg).
+     *
+     * @return string The corresponding MIME type.
+     */
     private function mimeFromFormat(string $format): string
     {
         return match (strtolower($format)) {
@@ -330,8 +363,12 @@ class PlaygroundService extends Component
     }
 
     /**
-     * @param list<string> $formats
-     * @return array{twigPicture: string, twigImg: string, twigUrl: string}
+     * Build sample Twig snippets for picture, img, and url helpers.
+     *
+     * @param string $profile The profile handle used in the samples.
+     * @param list<string> $formats Format list included in the picture helper sample.
+     *
+     * @return array{twigPicture: string, twigImg: string, twigUrl: string} Copy-paste Twig code samples.
      */
     private function profileCodeSamples(string $profile, array $formats): array
     {

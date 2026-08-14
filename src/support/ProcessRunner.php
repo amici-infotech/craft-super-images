@@ -1,4 +1,10 @@
 <?php
+/**
+ * Safe external process runner for optimizer binaries.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\support;
 
@@ -6,13 +12,22 @@ use amici\SuperImages\exceptions\ProcessingException;
 use yii\base\Component;
 
 /**
- * Safe external process runner (argument arrays only — never shell strings).
+ * Process Runner
+ *
+ * Executes external optimizer binaries using argument arrays only (never shell strings).
+ * Provides executable resolution and availability checks for BinaryResolver.
  */
 class ProcessRunner extends Component
 {
     /**
-     * @param list<string> $command
-     * @return array{exitCode: int, stdout: string, stderr: string}
+     * Run an external command and capture stdout, stderr, and exit code.
+     *
+     * @param list<string> $command Argument vector passed to proc_open (argv[0] is the binary).
+     * @param int|null $timeoutSeconds Maximum runtime in seconds; null disables timeout.
+     *
+     * @return array{exitCode: int, stdout: string, stderr: string} Process result payload.
+     *
+     * @throws ProcessingException When the command is empty, proc_open fails, or the process times out.
      */
     public function run(array $command, ?int $timeoutSeconds = 60): array
     {
@@ -77,6 +92,13 @@ class ProcessRunner extends Component
         ];
     }
 
+    /**
+     * Check whether a binary path or PATH lookup name is executable.
+     *
+     * @param string $binary Absolute path or bare executable name.
+     *
+     * @return bool True when the binary exists and is executable.
+     */
     public function isExecutableAvailable(string $binary): bool
     {
         if ($binary === '' || str_contains($binary, '/')) {
@@ -95,6 +117,13 @@ class ProcessRunner extends Component
         return false;
     }
 
+    /**
+     * Resolve a binary to an absolute executable path.
+     *
+     * @param string $binary Absolute path or bare executable name to search on PATH.
+     *
+     * @return string|null The resolved absolute path, or null when not found.
+     */
     public function resolveExecutable(string $binary): ?string
     {
         if ($binary === '') {

@@ -19,17 +19,24 @@ use yii\base\Component;
 /**
  * Cleanup Service
  *
- * Only deletes under the `preview/` storage prefix. Never touches originals.
+ * Scans and optionally deletes expired preview derivatives under the `preview/`
+ * storage prefix. Never touches originals or non-preview paths.
  */
 class CleanupService extends Component
 {
+    /** Storage path prefix for preview artifacts; only paths under this prefix are eligible. */
     private const PREVIEW_PREFIX = 'preview/';
+
+    /** Maximum number of path entries returned in cleanup results. */
     private const LIST_LIMIT = 100;
 
     /**
      * Scan and optionally delete expired preview derivatives.
      *
-     * @return array<string, mixed>
+     * @param bool $dryRun When true, report candidates without deleting files.
+     * @param int|null $retentionDays Override retention; defaults to cleanup.previewRetentionDays from settings.
+     *
+     * @return array<string, mixed> Cleanup report with counts, paths, and skip reason when applicable.
      */
     public function cleanupPreviews(bool $dryRun = true, ?int $retentionDays = null): array
     {
@@ -132,6 +139,13 @@ class CleanupService extends Component
         return $result;
     }
 
+    /**
+     * Validate that a relative storage path is safe for preview cleanup.
+     *
+     * @param string $relative Path relative to the storage root.
+     *
+     * @return bool True when the path starts with preview/ and contains no traversal segments.
+     */
     private function isSafePreviewPath(string $relative): bool
     {
         $relative = ltrim(str_replace('\\', '/', $relative), '/');
@@ -144,7 +158,13 @@ class CleanupService extends Component
     }
 
     /**
-     * @param array<string, mixed> $result
+     * Append a path entry to the cleanup result, respecting LIST_LIMIT.
+     *
+     * @param array<string, mixed> $result Cleanup result array passed by reference.
+     * @param string $path Relative storage path.
+     * @param string $action Action label (candidate or deleted).
+     *
+     * @return void
      */
     private function appendPath(array &$result, string $path, string $action): void
     {
@@ -160,6 +180,13 @@ class CleanupService extends Component
         ];
     }
 
+    /**
+     * Remove empty directories under the preview root after file deletion.
+     *
+     * @param string $previewRoot Absolute path to the preview directory.
+     *
+     * @return void
+     */
     private function pruneEmptyPreviewDirectories(string $previewRoot): void
     {
         if (!is_dir($previewRoot)) {

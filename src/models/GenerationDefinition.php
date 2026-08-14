@@ -1,11 +1,31 @@
 <?php
+/**
+ * Immutable definition of everything that contributes to a derivative identity hash.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\models;
 
+/**
+ * Generation Definition
+ *
+ * Bundles source identity, transform pipeline, encode/optimizer options, and schema version for cache keys.
+ */
 final class GenerationDefinition
 {
     /**
-     * @param list<OperationDefinition> $operations
+     * @param string $sourceIdentity Stable hash of the source image (asset, path, or URL).
+     * @param string $profile Profile handle.
+     * @param string $variant Variant handle.
+     * @param string $format Output format slug.
+     * @param list<OperationDefinition> $operations Ordered transform pipeline.
+     * @param EncodeOptions $encodeOptions Quality and metadata options for encoding.
+     * @param array<string, mixed> $optimizerOptions Per-format optimizer configuration.
+     * @param string $driverPreference Configured driver preference (`auto`, `libvips`, etc.).
+     * @param string $storageAdapter Storage adapter handle.
+     * @param int $schemaVersion Settings schema version included in the identity payload.
      */
     public function __construct(
         public readonly string $sourceIdentity,
@@ -22,7 +42,9 @@ final class GenerationDefinition
     }
 
     /**
-     * @return array<string, mixed>
+     * Serializes all identity-affecting fields into a stable array for hashing.
+     *
+     * @return array<string, mixed> Payload used to compute the derivative identity hash.
      */
     public function toIdentityPayload(): array
     {

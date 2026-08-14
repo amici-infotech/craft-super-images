@@ -1,4 +1,10 @@
 <?php
+/**
+ * Rotate geometry operation.
+ *
+ * @link      https://amiciinfotech.com
+ * @copyright Copyright (c) 2026 Amici Infotech
+ */
 
 namespace amici\SuperImages\operations\geometry;
 
@@ -10,13 +16,33 @@ use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
 
+/**
+ * Rotate Operation
+ *
+ * Rotates the image by the given angle in degrees.
+ * Supported options: `angle` (default: 0), `background` (GD: integer color index; Imagick: color string).
+ * Supported drivers: GD, Imagick, libvips.
+ */
 final class Rotate extends AbstractOperation
 {
+    /**
+     * Returns the operation identifier.
+     *
+     * @return string
+     */
     public function name(): string
     {
         return 'rotate';
     }
 
+    /**
+     * Rotates the image via the active driver.
+     *
+     * @param ImageHandle $handle The image to rotate.
+     * @param ImageDriverInterface $driver The active image driver.
+     *
+     * @return ImageHandle The rotated image handle.
+     */
     public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle
     {
         $angle = (float)($this->options['angle'] ?? 0);

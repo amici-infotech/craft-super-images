@@ -22,11 +22,21 @@ use yii\base\Component;
 
 /**
  * Source Resolver
+ *
+ * Resolves generation requests into SourceImage instances or stable identity strings.
+ * Supports Craft assets, allow-listed local paths, and allow-listed remote URLs.
  */
 class SourceResolver extends Component
 {
     /**
-     * Resolve a generation request into a usable SourceImage.
+     * Resolve a generation request into a usable SourceImage on disk.
+     *
+     * @param GenerationRequest $request The generation request with exactly one source.
+     *
+     * @return SourceImage The resolved source with readable path and metadata.
+     *
+     * @throws SourceException When the request has zero or multiple sources, or resolution fails.
+     * @throws InvalidConfigurationException When local or remote sources are disabled in config.
      */
     public function resolve(GenerationRequest $request): SourceImage
     {
@@ -49,6 +59,15 @@ class SourceResolver extends Component
         throw new SourceException('No valid source was provided.');
     }
 
+    /**
+     * Build a lightweight SourceReference from a generation request.
+     *
+     * @param GenerationRequest $request The generation request with exactly one source.
+     *
+     * @return SourceReference A serializable source reference without file I/O.
+     *
+     * @throws SourceException When no valid source is provided.
+     */
     public function referenceFromRequest(GenerationRequest $request): SourceReference
     {
         if ($request->assetId !== null) {
@@ -68,6 +87,13 @@ class SourceResolver extends Component
 
     /**
      * Resolve source identity without downloading or copying files.
+     *
+     * @param GenerationRequest $request The generation request with exactly one source.
+     *
+     * @return string Stable identity string used in generation definition hashing.
+     *
+     * @throws SourceException When the request has zero or multiple sources, or the asset is missing.
+     * @throws InvalidConfigurationException When local path sources are disabled.
      */
     public function resolveIdentity(GenerationRequest $request): string
     {
@@ -90,6 +116,15 @@ class SourceResolver extends Component
         throw new SourceException('No valid source was provided.');
     }
 
+    /**
+     * Resolve a Craft asset into a temporary local SourceImage copy.
+     *
+     * @param int $assetId The Craft asset element ID.
+     *
+     * @return SourceImage The source image backed by a tracked temp copy of the asset file.
+     *
+     * @throws SourceException When the asset is not found or the file is not readable.
+     */
     private function resolveAsset(int $assetId): SourceImage
     {
         $asset = Asset::find()->id($assetId)->one();
@@ -120,6 +155,16 @@ class SourceResolver extends Component
         );
     }
 
+    /**
+     * Resolve an allow-listed local filesystem path into a SourceImage.
+     *
+     * @param string $localPath The configured local path or alias.
+     *
+     * @return SourceImage The source image referencing the canonical local file.
+     *
+     * @throws InvalidConfigurationException When local path sources are disabled.
+     * @throws SourceException When the path is outside allowed roots or not readable.
+     */
     private function resolveLocalPath(string $localPath): SourceImage
     {
         $settings = Plugin::getInstance()->getSettings();
@@ -146,6 +191,16 @@ class SourceResolver extends Component
         );
     }
 
+    /**
+     * Download an allow-listed remote URL into a temporary SourceImage.
+     *
+     * @param string $remoteUrl The remote HTTP(S) URL to fetch.
+     *
+     * @return SourceImage The source image backed by a tracked temp download.
+     *
+     * @throws InvalidConfigurationException When remote URL sources are disabled.
+     * @throws SourceException When the URL fails validation or download.
+     */
     private function resolveRemoteUrl(string $remoteUrl): SourceImage
     {
         $settings = Plugin::getInstance()->getSettings();
@@ -180,11 +235,27 @@ class SourceResolver extends Component
         );
     }
 
+    /**
+     * Build the identity string for a loaded asset element.
+     *
+     * @param Asset $asset The Craft asset element.
+     *
+     * @return string Identity in the form asset:{id}:{dateModified}.
+     */
     private function assetIdentity(Asset $asset): string
     {
         return $this->formatAssetIdentity((int) $asset->id, $asset->dateModified?->getTimestamp() ?? 0);
     }
 
+    /**
+     * Load an asset by ID and return its identity string.
+     *
+     * @param int $assetId The Craft asset element ID.
+     *
+     * @return string Identity in the form asset:{id}:{dateModified}.
+     *
+     * @throws SourceException When the asset is not found.
+     */
     private function assetIdentityFromId(int $assetId): string
     {
         $asset = Asset::find()->id($assetId)->one();
@@ -196,11 +267,29 @@ class SourceResolver extends Component
         return $this->assetIdentity($asset);
     }
 
+    /**
+     * Format a stable asset identity from ID and modification timestamp.
+     *
+     * @param int $assetId The Craft asset element ID.
+     * @param int $modifiedTimestamp The asset dateModified Unix timestamp.
+     *
+     * @return string Identity in the form asset:{id}:{timestamp}.
+     */
     private function formatAssetIdentity(int $assetId, int $modifiedTimestamp): string
     {
         return 'asset:' . $assetId . ':' . $modifiedTimestamp;
     }
 
+    /**
+     * Compute identity for a local path without creating a SourceImage.
+     *
+     * @param string $localPath The configured local path or alias.
+     *
+     * @return string Identity prefixed with local: and a content hash.
+     *
+     * @throws InvalidConfigurationException When local path sources are disabled.
+     * @throws SourceException When the path is not readable.
+     */
     private function localPathIdentity(string $localPath): string
     {
         $settings = Plugin::getInstance()->getSettings();
@@ -223,6 +312,13 @@ class SourceResolver extends Component
         );
     }
 
+    /**
+     * Guess a file extension from a remote URL path component.
+     *
+     * @param string $url The remote URL.
+     *
+     * @return string File extension without dot, or img when unknown.
+     */
     private function extensionFromUrl(string $url): string
     {
         $path = parse_url($url, PHP_URL_PATH);

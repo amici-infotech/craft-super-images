@@ -16,17 +16,35 @@ use yii\base\Component;
 
 /**
  * Optimizer Manager
+ *
+ * Selects post-encode optimizers per format from config, falling back to a
+ * null passthrough when optimizers are disabled or binaries are unavailable.
  */
 class OptimizerManager extends Component
 {
+    /**
+     * Event fired after built-in optimizers are registered so plugins can add custom implementations.
+     */
     public const EVENT_REGISTER_OPTIMIZERS = 'registerOptimizers';
 
+    /** Cached NullOptimizer singleton instance. */
     private ?NullOptimizer $_nullOptimizer = null;
+
+    /** Cached BinaryOptimizer singleton instance. */
     private ?BinaryOptimizer $_binaryOptimizer = null;
 
-    /** @var array<string, OptimizerInterface> */
+    /**
+     * Registered optimizer implementations keyed by name().
+     *
+     * @var array<string, OptimizerInterface>
+     */
     private array $_optimizers = [];
 
+    /**
+     * Register built-in optimizers and trigger the register event for extensions.
+     *
+     * @return void
+     */
     public function registerDefaults(): void
     {
         $this->register($this->nullOptimizer());
@@ -40,13 +58,26 @@ class OptimizerManager extends Component
         }
     }
 
+    /**
+     * Register an optimizer implementation.
+     *
+     * @param OptimizerInterface $optimizer The optimizer instance to register.
+     *
+     * @return void
+     */
     public function register(OptimizerInterface $optimizer): void
     {
         $this->_optimizers[$optimizer->name()] = $optimizer;
     }
 
     /**
-     * @param array<string, mixed> $config
+     * Select the optimizer for a given output format.
+     *
+     * @param string $format Output format (jpg/jpeg normalized internally).
+     * @param array<string, mixed> $config Optimizer config map keyed by format.
+     * @param bool $enabled When false, always returns the null optimizer.
+     *
+     * @return OptimizerInterface The selected optimizer or NullOptimizer passthrough.
      */
     public function select(string $format, array $config, bool $enabled = true): OptimizerInterface
     {
@@ -71,7 +102,11 @@ class OptimizerManager extends Component
     }
 
     /**
-     * @return array{0: ?string, 1: ?string} [tool, binaryPath]
+     * Normalize optimizer tool config from string or array form.
+     *
+     * @param mixed $value Config value: tool name string, {tool, binary} array, false, or null.
+     *
+     * @return array{0: ?string, 1: ?string} Tuple of [tool name, optional binary path].
      */
     public function normalizeToolConfig(mixed $value): array
     {
@@ -97,11 +132,21 @@ class OptimizerManager extends Component
         return [$tool, $binary];
     }
 
+    /**
+     * Return the shared null optimizer passthrough instance.
+     *
+     * @return NullOptimizer The no-op optimizer.
+     */
     private function nullOptimizer(): NullOptimizer
     {
         return $this->_nullOptimizer ??= new NullOptimizer();
     }
 
+    /**
+     * Return the shared binary optimizer instance.
+     *
+     * @return BinaryOptimizer The external-binary optimizer.
+     */
     private function binaryOptimizer(): BinaryOptimizer
     {
         return $this->_binaryOptimizer ??= new BinaryOptimizer();

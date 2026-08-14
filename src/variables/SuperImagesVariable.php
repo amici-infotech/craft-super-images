@@ -23,14 +23,20 @@ use Twig\Markup;
 
 /**
  * Super Images Variable
+ *
+ * Twig API exposed as `craft.superImages`.
  */
 class SuperImagesVariable
 {
     /**
      * Generate a derivative and return the full result object.
      *
-     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL
-     * @param array<string, mixed> $options profile, variant, format, …
+     * Options: `profile`, `variant`, `format`, `storage`.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Generation options.
+     *
+     * @return GenerationResult The generation outcome including URL and diagnostics.
      */
     public function generate(Asset|string|int $source, array $options = []): GenerationResult
     {
@@ -42,8 +48,12 @@ class SuperImagesVariable
     /**
      * Soft generate for demo templates — returns null on failure instead of throwing.
      *
-     * @param Asset|string|int $source
-     * @param array<string, mixed> $options
+     * Options: `profile`, `variant`, `format`, `storage`.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Generation options.
+     *
+     * @return GenerationResult|null The result, or null when generation fails.
      */
     public function tryGenerate(Asset|string|int $source, array $options = []): ?GenerationResult
     {
@@ -59,8 +69,12 @@ class SuperImagesVariable
     /**
      * Plan and return a delivery URL (lazy signed or eager storage URL).
      *
-     * @param Asset|string|int $source
-     * @param array<string, mixed> $options
+     * Options: `profile`, `variant`, `format`, `storage`.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Planning options.
+     *
+     * @return string The resolved delivery URL.
      */
     public function url(Asset|string|int $source, array $options = []): string
     {
@@ -70,14 +84,19 @@ class SuperImagesVariable
     /**
      * Plan and return an `<img>` tag for one derivative.
      *
-     * Extra HTML attributes:
-     * - top-level keys that are not reserved options (e.g. `id`, `class`, `data-*`)
+     * Generation options: `profile`, `variant`, `format`, `storage`.
+     *
+     * HTML attribute options:
+     * - top-level keys that are not reserved (e.g. `id`, `class`, `data-*`)
      * - `attrs` / `attributes` / `imgAttrs` bag (merged last for those keys)
+     * - convenience keys: `alt`, `loading`, `decoding`, `sizes`
      *
      * Managed attrs (`src`, and dimensions when known) always win.
      *
-     * @param Asset|string|int $source
-     * @param array<string, mixed> $options
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Generation and HTML attribute options.
+     *
+     * @return Markup Safe HTML markup for the `<img>` tag, or an error `<div>` on failure.
      */
     public function img(Asset|string|int $source, array $options = []): Markup
     {
@@ -120,13 +139,18 @@ class SuperImagesVariable
      * Uses profile variants (or explicit `variants`) as `w` descriptors.
      * Optional `variant` picks the fallback `<img src>` (default: middle / `md`).
      *
-     * Extra HTML attributes:
+     * Generation options: `profile`, `variant`, `variants`, `formats`, `format`, `storage`, `sizes`.
+     *
+     * HTML attribute options:
      * - `pictureAttrs` / `pictureAttributes` on `<picture>`
      * - top-level non-reserved keys + `attrs` / `attributes` / `imgAttrs` on the inner `<img>`
      * - `sourceAttrs` / `sourceAttributes` merged onto every `<source>`
+     * - convenience keys: `alt`, `loading`, `decoding`
      *
-     * @param Asset|string|int $source
-     * @param array<string, mixed> $options
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Generation and HTML attribute options.
+     *
+     * @return Markup Safe HTML markup for the `<picture>` element.
      */
     public function picture(Asset|string|int $source, array $options = []): Markup
     {
@@ -211,7 +235,12 @@ class SuperImagesVariable
     }
 
     /**
-     * @param list<string> $variants
+     * Picks the fallback variant for the inner `<img>` in a `<picture>`.
+     *
+     * @param list<string> $variants Available variant handles.
+     * @param mixed $requested Explicitly requested variant, if any.
+     *
+     * @return string The resolved variant handle.
      */
     private function resolveFallbackVariant(array $variants, mixed $requested): string
     {
@@ -231,8 +260,12 @@ class SuperImagesVariable
     /**
      * Build srcset for multiple variants of one format.
      *
-     * @param Asset|string|int $source
-     * @param array<string, mixed> $options
+     * Options: `profile`, `format`, `variants`.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Srcset planning options.
+     *
+     * @return string Comma-separated srcset descriptor string.
      */
     public function srcset(Asset|string|int $source, array $options = []): string
     {
@@ -267,6 +300,10 @@ class SuperImagesVariable
 
     /**
      * Whether the selected driver can encode a format.
+     *
+     * @param string $format Output format handle (e.g. `webp`, `jpg`, `avif`).
+     *
+     * @return bool True when the active driver supports the format.
      */
     public function supportsFormat(string $format): bool
     {
@@ -278,8 +315,12 @@ class SuperImagesVariable
     }
 
     /**
-     * @param Asset|string|int $source
-     * @param array<string, mixed> $options
+     * Plans delivery metadata without generating the derivative.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Planning options.
+     *
+     * @return PlannedDelivery Planned delivery URL and dimension hints.
      */
     private function plan(Asset|string|int $source, array $options = []): PlannedDelivery
     {
@@ -289,8 +330,12 @@ class SuperImagesVariable
     }
 
     /**
-     * @param Asset|string|int $source
-     * @param array<string, mixed> $options
+     * Builds a generation request from a source reference and options.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Request options.
+     *
+     * @return GenerationRequest The normalized generation request.
      */
     private function buildRequest(Asset|string|int $source, array $options): GenerationRequest
     {
@@ -319,6 +364,13 @@ class SuperImagesVariable
         );
     }
 
+    /**
+     * Returns a sensible default alt text for a source reference.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     *
+     * @return string Default alt text, or an empty string when unavailable.
+     */
     private function defaultAlt(Asset|string|int $source): string
     {
         if ($source instanceof Asset) {
@@ -339,8 +391,9 @@ class SuperImagesVariable
      * - any top-level key that is not a reserved Super Images option
      * - explicit bags: attrs / attributes / imgAttrs
      *
-     * @param array<string, mixed> $options
-     * @return array<string, mixed>
+     * @param array<string, mixed> $options Twig helper options.
+     *
+     * @return array<string, mixed> Extracted HTML attributes.
      */
     private function extractHtmlAttributes(array $options): array
     {
@@ -366,10 +419,13 @@ class SuperImagesVariable
     }
 
     /**
-     * Later arrays win. Empty strings / null are dropped.
+     * Merges HTML attribute layers; later arrays win.
      *
-     * @param array<string, mixed> ...$layers
-     * @return array<string, mixed>
+     * Empty strings and null values are dropped.
+     *
+     * @param array<string, mixed> ...$layers Attribute layers to merge.
+     *
+     * @return array<string, mixed> Merged attributes.
      */
     private function mergeHtmlAttributes(array ...$layers): array
     {
@@ -388,8 +444,11 @@ class SuperImagesVariable
     }
 
     /**
-     * @param mixed $value
-     * @return array<string, mixed>
+     * Normalizes an attribute bag to a string-keyed array.
+     *
+     * @param mixed $value Raw attribute bag value.
+     *
+     * @return array<string, mixed> Normalized attributes.
      */
     private function normalizeAttributeBag(mixed $value): array
     {
@@ -408,6 +467,13 @@ class SuperImagesVariable
         return $attrs;
     }
 
+    /**
+     * Whether an option key is reserved for generation/planning rather than HTML attrs.
+     *
+     * @param string $key Option key to test.
+     *
+     * @return bool True when the key is reserved.
+     */
     private function isReservedOptionKey(string $key): bool
     {
         return in_array($key, [
@@ -436,8 +502,11 @@ class SuperImagesVariable
     }
 
     /**
-     * @param list<string> $formats
-     * @return list<string>
+     * Orders formats for `<picture>` `<source>` elements (modern first).
+     *
+     * @param list<string> $formats Format handles to order.
+     *
+     * @return list<string> Ordered format handles.
      */
     private function orderFormats(array $formats): array
     {
@@ -454,6 +523,13 @@ class SuperImagesVariable
         return $normalized;
     }
 
+    /**
+     * Maps a format handle to a MIME type for `<source type="">`.
+     *
+     * @param string $format Output format handle.
+     *
+     * @return string MIME type string.
+     */
     private function mimeFromFormat(string $format): string
     {
         return match (strtolower($format)) {
