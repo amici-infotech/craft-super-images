@@ -66,6 +66,30 @@ class SourceResolver extends Component
         throw new SourceException('No valid source was provided.');
     }
 
+    /**
+     * Resolve source identity without downloading or copying files.
+     */
+    public function resolveIdentity(GenerationRequest $request): string
+    {
+        if ($request->sourceCount() !== 1) {
+            throw new SourceException('Generation request must include exactly one source.');
+        }
+
+        if ($request->assetId !== null) {
+            return $this->assetIdentityFromId($request->assetId);
+        }
+
+        if ($request->localPath !== null) {
+            return $this->localPathIdentity($request->localPath);
+        }
+
+        if ($request->remoteUrl !== null) {
+            return 'remote:' . hash('sha256', $request->remoteUrl);
+        }
+
+        throw new SourceException('No valid source was provided.');
+    }
+
     private function resolveAsset(int $assetId): SourceImage
     {
         $asset = Asset::find()->id($assetId)->one();
@@ -158,7 +182,45 @@ class SourceResolver extends Component
 
     private function assetIdentity(Asset $asset): string
     {
-        return 'asset:' . $asset->id . ':' . ($asset->dateModified?->getTimestamp() ?? 0);
+        return $this->formatAssetIdentity((int) $asset->id, $asset->dateModified?->getTimestamp() ?? 0);
+    }
+
+    private function assetIdentityFromId(int $assetId): string
+    {
+        $asset = Asset::find()->id($assetId)->one();
+
+        if (!$asset instanceof Asset) {
+            throw new SourceException(sprintf('Asset "%d" was not found.', $assetId));
+        }
+
+        return $this->assetIdentity($asset);
+    }
+
+    private function formatAssetIdentity(int $assetId, int $modifiedTimestamp): string
+    {
+        return 'asset:' . $assetId . ':' . $modifiedTimestamp;
+    }
+
+    private function localPathIdentity(string $localPath): string
+    {
+        $settings = Plugin::getInstance()->getSettings();
+        $localConfig = $settings->sources['local'] ?? [];
+
+        if (!($localConfig['enabled'] ?? false)) {
+            throw new InvalidConfigurationException('Local path sources are disabled.');
+        }
+
+        $guard = new PathGuard($localConfig['allowedRoots'] ?? []);
+        $path = $guard->resolve($localPath);
+
+        if (!is_readable($path)) {
+            throw new SourceException('Local path is not readable.');
+        }
+
+        return 'local:' . hash(
+            'sha256',
+            $path . '|' . (string) filemtime($path) . '|' . (string) filesize($path)
+        );
     }
 
     private function extensionFromUrl(string $url): string

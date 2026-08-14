@@ -6,12 +6,33 @@ use yii\base\Component;
 
 final class StoragePathBuilder extends Component
 {
-    public function build(string $identity, string $format, ?string $profile = null, ?string $variant = null): string
-    {
+    /**
+     * Build a deterministic storage-relative path.
+     *
+     * When `$namespace` is set (e.g. `preview/20260814`), the path becomes:
+     * `{namespace}/{prefix}/{identity}/{profile}/{variant}.ext`
+     */
+    public function build(
+        string $identity,
+        string $format,
+        ?string $profile = null,
+        ?string $variant = null,
+        ?string $namespace = null,
+    ): string {
         $format = strtolower($format);
         $extension = $format === 'jpeg' ? 'jpg' : $format;
         $prefix = substr($identity, 0, 2);
-        $segments = array_filter([$prefix, $identity]);
+        $segments = [];
+
+        if ($namespace !== null && $namespace !== '') {
+            $namespace = trim(str_replace('\\', '/', $namespace), '/');
+            if ($namespace !== '') {
+                $segments[] = $namespace;
+            }
+        }
+
+        $segments[] = $prefix;
+        $segments[] = $identity;
 
         if ($profile !== null && $profile !== '') {
             $segments[] = $profile;

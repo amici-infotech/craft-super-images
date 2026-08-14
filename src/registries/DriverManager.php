@@ -6,6 +6,7 @@ use amici\SuperImages\contracts\ImageDriverInterface;
 use amici\SuperImages\drivers\GdDriver;
 use amici\SuperImages\drivers\ImagickDriver;
 use amici\SuperImages\drivers\LibvipsDriver;
+use amici\SuperImages\events\RegisterDriversEvent;
 use amici\SuperImages\exceptions\DriverUnavailableException;
 use yii\base\Component;
 
@@ -14,6 +15,8 @@ use yii\base\Component;
  */
 class DriverManager extends Component
 {
+    public const EVENT_REGISTER_DRIVERS = 'registerDrivers';
+
     /** @var array<string, ImageDriverInterface> */
     private array $_drivers = [];
 
@@ -25,6 +28,13 @@ class DriverManager extends Component
         $this->register(new LibvipsDriver());
         $this->register(new ImagickDriver());
         $this->register(new GdDriver());
+
+        $event = new RegisterDriversEvent();
+        $this->trigger(self::EVENT_REGISTER_DRIVERS, $event);
+
+        foreach ($event->drivers as $driver) {
+            $this->register($driver);
+        }
     }
 
     public function register(ImageDriverInterface $driver): void

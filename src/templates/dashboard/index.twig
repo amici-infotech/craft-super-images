@@ -1,0 +1,56 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Dashboard"|t('super-images') %}
+{% set selectedSubnavItem = 'dashboard' %}
+{% set crumbs = [
+    { label: "Super Images"|t('super-images'), url: cpUrl('super-images') },
+] %}
+
+{% block content %}
+    <div class="readable">
+        <p>{{ "Operational overview for Super Images. PHP config is the source of truth."|t('super-images') }}</p>
+    </div>
+
+    <div class="flex flex-nowrap" style="gap: 24px; flex-wrap: wrap; margin-top: 24px;">
+        <div>
+            <h2>{{ "Status"|t('super-images') }}</h2>
+            <ul class="padded">
+                <li>{{ "Enabled"|t('super-images') }}: {{ summary.enabled ? 'yes'|t('super-images') : 'no'|t('super-images') }}</li>
+                <li>{{ "Delivery mode"|t('super-images') }}: {{ summary.deliveryMode }}</li>
+                <li>{{ "Driver"|t('super-images') }}: {{ summary.driver }}{% if summary.selectedDriver %} ({{ summary.selectedDriver }}){% endif %}</li>
+                <li>{{ "Storage"|t('super-images') }}: {{ summary.storageDefault }}</li>
+                <li>{{ "Profiles"|t('super-images') }}: {{ summary.profileCount }}</li>
+            </ul>
+        </div>
+
+        <div>
+            <h2>{{ "Doctor"|t('super-images') }}</h2>
+            <ul class="padded">
+                <li><span class="status green"></span> {{ "Pass"|t('super-images') }}: {{ summary.doctor.pass }}</li>
+                <li><span class="status orange"></span> {{ "Warn"|t('super-images') }}: {{ summary.doctor.warn }}</li>
+                <li><span class="status red"></span> {{ "Fail"|t('super-images') }}: {{ summary.doctor.fail }}</li>
+            </ul>
+            <p><a href="{{ cpUrl('super-images/diagnostics') }}">{{ "View diagnostics"|t('super-images') }}</a></p>
+        </div>
+
+        <div>
+            <h2>{{ "Queue"|t('super-images') }}</h2>
+            {% if summary.queue.available %}
+                <ul class="padded">
+                    <li>{{ "Pending"|t('super-images') }}: {{ summary.queue.pending }}</li>
+                    <li>{{ "Reserved"|t('super-images') }}: {{ summary.queue.reserved }}</li>
+                    <li>{{ "Failed"|t('super-images') }}: {{ summary.queue.failed }}</li>
+                </ul>
+            {% else %}
+                <p class="light">{{ "Queue table not available."|t('super-images') }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <hr>
+
+    <p>
+        <a class="btn" href="{{ cpUrl('super-images/playground') }}">{{ "Open Playground"|t('super-images') }}</a>
+        <a class="btn" href="{{ cpUrl('super-images/settings') }}">{{ "Settings overview"|t('super-images') }}</a>
+    </p>
+{% endblock %}

@@ -46,8 +46,14 @@ class Settings extends Model
     ];
 
     /** @var array<string, mixed> */
+    public array $delivery = [
+        'mode' => 'lazy', // eager|lazy|hybrid — eager/hybrid emit storage URLs; lazy emits signed runtime URLs
+    ];
+
+    /** @var array<string, mixed> */
     public array $runtime = [
         'enabled' => true,
+        /** @var string|null Falls back to Craft security key when null. */
         'signingSecret' => null,
         'urlTtl' => 3600,
         'maxWidth' => 4096,
@@ -83,6 +89,19 @@ class Settings extends Model
     /** @var array<string, mixed> */
     public array $optimizers = [
         'enabled' => true,
+        /**
+         * Absolute paths (or env-resolved paths) for external tools.
+         * Tool names alone are resolved via PATH when omitted.
+         */
+        'binaries' => [
+            'jpegoptim' => 'jpegoptim',
+            'oxipng' => 'oxipng',
+            'optipng' => 'optipng',
+            'pngquant' => 'pngquant',
+            'cwebp' => 'cwebp',
+            'avifenc' => 'avifenc',
+        ],
+        // Per-format tool: string name, null, or ['tool' => 'jpegoptim', 'binary' => '/usr/bin/jpegoptim']
         'jpeg' => 'jpegoptim',
         'png' => 'oxipng',
         'webp' => null,
@@ -124,6 +143,8 @@ class Settings extends Model
     public array $cleanup = [
         'previewRetentionDays' => 2,
         'obsoleteRetentionDays' => 30,
+        /** Remote storage listing is expensive; keep off unless explicitly enabled. */
+        'allowRemoteScan' => false,
     ];
 
     /**
@@ -137,6 +158,7 @@ class Settings extends Model
             'defaultFormat' => $this->defaultFormat,
             'driver' => $this->driver,
             'autoGenerate' => $this->autoGenerate,
+            'delivery' => $this->delivery,
             'sources' => $this->sources,
             'runtime' => $this->runtime,
             'storage' => $this->storage,

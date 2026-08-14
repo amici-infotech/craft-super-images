@@ -1,0 +1,120 @@
+{% extends "_layouts/cp" %}
+{% import "_includes/forms" as forms %}
+
+{% set title = "Playground"|t('super-images') %}
+{% set selectedSubnavItem = 'playground' %}
+{% set crumbs = [
+    { label: "Super Images"|t('super-images'), url: cpUrl('super-images') },
+] %}
+
+{% block content %}
+    <div class="readable">
+        <p>{{ "Generate a preview derivative via the real Generation Service. Previews are stored under a preview/ namespace and do not overwrite production paths."|t('super-images') }}</p>
+    </div>
+
+    {% if error %}
+        <div class="pane" style="border-left: 3px solid #cf1124; margin: 16px 0; padding: 12px 16px;">
+            {{ error|e }}
+        </div>
+    {% endif %}
+
+    <form method="post" accept-charset="UTF-8">
+        {{ actionInput('super-images/playground/generate') }}
+        {{ csrfInput() }}
+
+        {{ forms.textField({
+            first: true,
+            label: "Asset ID"|t('super-images'),
+            instructions: "Enter a Craft asset element ID."|t('super-images'),
+            id: 'assetId',
+            name: 'assetId',
+            value: posted.assetId,
+            required: true,
+            type: 'number',
+            min: 1,
+        }) }}
+
+        {{ forms.selectField({
+            label: "Profile"|t('super-images'),
+            id: 'profile',
+            name: 'profile',
+            options: profileSelectOptions,
+            value: posted.profile,
+        }) }}
+
+        {% set variantOptions = [{ label: "Default (first variant)"|t('super-images'), value: '' }] %}
+        {% set currentProfile = profiles[posted.profile] ?? null %}
+        {% if currentProfile %}
+            {% for variant in currentProfile.variants %}
+                {% set variantOptions = variantOptions|merge([{ label: variant, value: variant }]) %}
+            {% endfor %}
+        {% endif %}
+
+        {{ forms.selectField({
+            label: "Variant"|t('super-images'),
+            id: 'variant',
+            name: 'variant',
+            options: variantOptions,
+            value: posted.variant ?? '',
+        }) }}
+
+        {{ forms.selectField({
+            label: "Format"|t('super-images'),
+            id: 'format',
+            name: 'format',
+            options: formatSelectOptions,
+            value: posted.format,
+        }) }}
+
+        <div class="buttons">
+            <button type="submit" class="btn submit">{{ "Generate preview"|t('super-images') }}</button>
+        </div>
+    </form>
+
+    {% if result %}
+        <hr>
+        <h2>{{ "Comparison"|t('super-images') }}</h2>
+
+        <div class="flex" style="gap: 32px; flex-wrap: wrap;">
+            <div>
+                <h3>{{ "Original"|t('super-images') }}</h3>
+                <ul class="padded">
+                    <li>{{ result.assetTitle }} (#{{ result.assetId }})</li>
+                    <li>{{ result.original.width }}×{{ result.original.height }}</li>
+                    <li>{{ result.original.mime }}</li>
+                    <li>{{ result.original.size|filesize }}</li>
+                </ul>
+            </div>
+            <div>
+                <h3>{{ "Generated"|t('super-images') }}</h3>
+                <ul class="padded">
+                    <li>{{ result.generated.width }}×{{ result.generated.height }} · {{ result.generated.format }}</li>
+                    <li>{{ result.generated.mime }}</li>
+                    <li>{{ result.generated.size|filesize }}</li>
+                    <li>{{ "Duration"|t('super-images') }}: {{ result.generated.durationMs|number_format(1) }} ms</li>
+                    {% if result.percentSaved is not null %}
+                        <li>{{ "Saved"|t('super-images') }}: {{ result.percentSaved }}%</li>
+                    {% endif %}
+                </ul>
+                {% if result.generated.url %}
+                    <p><a href="{{ result.generated.url }}" target="_blank" rel="noopener">{{ "Open preview URL"|t('super-images') }}</a></p>
+                    <p><img src="{{ result.generated.url }}" alt="" style="max-width: 420px; height: auto;"></p>
+                {% endif %}
+            </div>
+        </div>
+
+        <h3>{{ "Diagnostics"|t('super-images') }}</h3>
+        <pre class="pane" style="overflow:auto;"><code>{{ result.generated.diagnostics|json_encode(constant('JSON_PRETTY_PRINT')) }}</code></pre>
+        <p class="light">{{ "Storage path"|t('super-images') }}: <code>{{ result.generated.storagePath }}</code></p>
+
+        <h3>{{ "Code samples"|t('super-images') }}</h3>
+        <h4>Twig URL</h4>
+        <pre class="pane"><code>{{ result.code.twigUrl }}</code></pre>
+        <h4>Twig img</h4>
+        <pre class="pane"><code>{{ result.code.twigImg }}</code></pre>
+        <h4>Twig picture</h4>
+        <pre class="pane"><code>{{ result.code.twigPicture }}</code></pre>
+        <h4>PHP</h4>
+        <pre class="pane"><code>{{ result.code.php }}</code></pre>
+    {% endif %}
+{% endblock %}

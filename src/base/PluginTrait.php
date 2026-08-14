@@ -14,9 +14,19 @@ use amici\SuperImages\registries\EncoderManager;
 use amici\SuperImages\registries\OperationRegistry;
 use amici\SuperImages\registries\OptimizerManager;
 use amici\SuperImages\registries\StorageManager;
+use amici\SuperImages\services\AutoGenerateService;
+use amici\SuperImages\services\BinaryResolver;
+use amici\SuperImages\services\CleanupService;
 use amici\SuperImages\services\ConfigurationResolver;
+use amici\SuperImages\services\DeliveryUrlService;
+use amici\SuperImages\services\DiagnosticsService;
 use amici\SuperImages\services\GenerationIdentityService;
+use amici\SuperImages\services\GenerationLockService;
 use amici\SuperImages\services\GenerationService;
+use amici\SuperImages\services\ManifestService;
+use amici\SuperImages\services\PlaygroundService;
+use amici\SuperImages\services\RuntimeGenerationService;
+use amici\SuperImages\services\SignedUrlService;
 use amici\SuperImages\services\SourceResolver;
 use amici\SuperImages\services\StoragePathBuilder;
 use amici\SuperImages\storage\ExistenceMarkerStore;
@@ -27,13 +37,23 @@ use Craft;
 /**
  * Plugin Trait
  *
- * Registers Phase 1 engine services and exposes typed accessors.
+ * Registers engine services and exposes typed accessors.
  *
  * @property-read ConfigurationResolver $configurationResolver
  * @property-read SourceResolver $sourceResolver
  * @property-read GenerationIdentityService $generationIdentity
  * @property-read GenerationService $generation
  * @property-read StoragePathBuilder $storagePathBuilder
+ * @property-read ManifestService $manifest
+ * @property-read SignedUrlService $signedUrls
+ * @property-read GenerationLockService $generationLocks
+ * @property-read DeliveryUrlService $deliveryUrls
+ * @property-read AutoGenerateService $autoGenerate
+ * @property-read RuntimeGenerationService $runtimeGeneration
+ * @property-read BinaryResolver $binaryResolver
+ * @property-read DiagnosticsService $diagnostics
+ * @property-read CleanupService $cleanup
+ * @property-read PlaygroundService $playground
  * @property-read DriverManager $driverManager
  * @property-read EncoderManager $encoderManager
  * @property-read OptimizerManager $optimizerManager
@@ -57,6 +77,16 @@ trait PluginTrait
             'generationIdentity' => GenerationIdentityService::class,
             'storagePathBuilder' => StoragePathBuilder::class,
             'generation' => GenerationService::class,
+            'manifest' => ManifestService::class,
+            'signedUrls' => SignedUrlService::class,
+            'generationLocks' => GenerationLockService::class,
+            'deliveryUrls' => DeliveryUrlService::class,
+            'autoGenerate' => AutoGenerateService::class,
+            'runtimeGeneration' => RuntimeGenerationService::class,
+            'binaryResolver' => BinaryResolver::class,
+            'diagnostics' => DiagnosticsService::class,
+            'cleanup' => CleanupService::class,
+            'playground' => PlaygroundService::class,
             'driverManager' => DriverManager::class,
             'encoderManager' => EncoderManager::class,
             'optimizerManager' => OptimizerManager::class,
@@ -104,6 +134,56 @@ trait PluginTrait
     public function getStoragePathBuilder(): StoragePathBuilder
     {
         return $this->get('storagePathBuilder');
+    }
+
+    public function getManifest(): ManifestService
+    {
+        return $this->get('manifest');
+    }
+
+    public function getSignedUrls(): SignedUrlService
+    {
+        return $this->get('signedUrls');
+    }
+
+    public function getGenerationLocks(): GenerationLockService
+    {
+        return $this->get('generationLocks');
+    }
+
+    public function getDeliveryUrls(): DeliveryUrlService
+    {
+        return $this->get('deliveryUrls');
+    }
+
+    public function getAutoGenerate(): AutoGenerateService
+    {
+        return $this->get('autoGenerate');
+    }
+
+    public function getRuntimeGeneration(): RuntimeGenerationService
+    {
+        return $this->get('runtimeGeneration');
+    }
+
+    public function getBinaryResolver(): BinaryResolver
+    {
+        return $this->get('binaryResolver');
+    }
+
+    public function getDiagnostics(): DiagnosticsService
+    {
+        return $this->get('diagnostics');
+    }
+
+    public function getCleanup(): CleanupService
+    {
+        return $this->get('cleanup');
+    }
+
+    public function getPlayground(): PlaygroundService
+    {
+        return $this->get('playground');
     }
 
     public function getDriverManager(): DriverManager

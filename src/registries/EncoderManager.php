@@ -4,6 +4,7 @@ namespace amici\SuperImages\registries;
 
 use amici\SuperImages\contracts\EncoderInterface;
 use amici\SuperImages\encoders\NativeDriverEncoder;
+use amici\SuperImages\events\RegisterEncodersEvent;
 use amici\SuperImages\exceptions\EncoderUnavailableException;
 use yii\base\Component;
 
@@ -12,12 +13,21 @@ use yii\base\Component;
  */
 class EncoderManager extends Component
 {
+    public const EVENT_REGISTER_ENCODERS = 'registerEncoders';
+
     /** @var array<string, EncoderInterface> */
     private array $_encoders = [];
 
     public function registerDefaults(): void
     {
         $this->register(new NativeDriverEncoder());
+
+        $event = new RegisterEncodersEvent();
+        $this->trigger(self::EVENT_REGISTER_ENCODERS, $event);
+
+        foreach ($event->encoders as $encoder) {
+            $this->register($encoder);
+        }
     }
 
     public function register(EncoderInterface $encoder): void

@@ -1,0 +1,97 @@
+# Twig & frontend
+
+Normal template render **plans URLs only**. It must not process images, check derivative existence, or touch existence markers.
+
+---
+
+## Variable API (`craft.superImages`)
+
+```twig
+{# Delivery URL (lazy signed or eager storage, per delivery.mode) #}
+{{ craft.superImages.url(asset, { profile: 'responsive', variant: 'md', format: 'webp' }) }}
+
+{# <img> #}
+{{ craft.superImages.img(asset, {
+    profile: 'responsive',
+    variant: 'md',
+    format: 'webp',
+    alt: entry.title,
+    class: 'thumb',
+    sizes: '100vw'
+}) }}
+
+{# <picture> with format preference order #}
+{{ craft.superImages.picture(asset, {
+    profile: 'responsive',
+    variant: 'lg',
+    formats: ['avif', 'webp', 'jpg'],
+    sizes: '(min-width: 992px) 992px, 100vw'
+}) }}
+
+{# srcset string for multiple variants #}
+{% set srcset = craft.superImages.srcset(asset, {
+    profile: 'responsive',
+    format: 'webp',
+    variants: ['sm', 'md', 'lg', 'xl']
+}) %}
+
+{# Explicit eager generate (processes now) #}
+{% set result = craft.superImages.generate(asset, { variant: 'md', format: 'webp' }) %}
+{{ result.url }}
+
+{# Soft eager generate for demos #}
+{% set result = craft.superImages.tryGenerate(asset, { variant: 'md', format: 'webp' }) %}
+```
+
+### Sources
+
+| Input | Example |
+|---|---|
+| Craft Asset | `asset` |
+| Asset ID | `123` |
+| Local path | `'/images/hero.png'` |
+| Remote URL | `'https://cdn.example.com/hero.jpg'` |
+
+Local/remote sources use the same pipeline as Assets and must pass allow-lists in config.
+
+---
+
+## Filters
+
+```twig
+{{ asset|generateUrl('webp', { variant: 'lg' }) }}
+{{ asset|generateImgTag('webp', { variant: 'md', class: 'thumb' }) }}
+{{ asset|generatePictureTag({ profile: 'responsive', sizes: '100vw' }) }}
+{{ asset|generatePictureTag(['avif', 'webp', 'jpg']) }}
+
+{{ '/images/hero.png'|generateUrl('jpg', { variant: 'sm' }) }}
+```
+
+---
+
+## Delivery modes
+
+| `delivery.mode` | What Twig emits |
+|---|---|
+| `lazy` | Signed runtime action URL |
+| `eager` | Final storage/CDN URL |
+| `hybrid` | Storage URL (currently same as eager) |
+
+Use `generate()` / CLI / auto-generate when you need files to exist before first page view.
+
+---
+
+## Performance rules
+
+Do **not** call `generate()` inside list/gallery templates unless you intentionally want blocking eager generation.
+
+Prefer:
+
+```twig
+{{ craft.superImages.img(asset, { variant: 'md', format: 'webp' }) }}
+```
+
+and either:
+
+- lazy runtime generation, or
+- pre-warm via `php craft super-images/generate` / queue / autoGenerate.

@@ -1,0 +1,102 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Settings"|t('super-images') %}
+{% set selectedSubnavItem = 'settings' %}
+{% set crumbs = [
+    { label: "Super Images"|t('super-images'), url: cpUrl('super-images') },
+] %}
+
+{% block content %}
+    <div class="pane" style="margin-bottom: 24px; padding: 12px 16px;">
+        <strong>{{ "PHP config is the source of truth."|t('super-images') }}</strong>
+        {{ "Edit `config/super-images.php` (see `config/super-images.example.php`). This page is a read-only overview of the effective Settings model."|t('super-images') }}
+    </div>
+
+    <h2>{{ "General"|t('super-images') }}</h2>
+    <ul class="padded">
+        <li>{{ "Enabled"|t('super-images') }}: {{ settings.enabled ? 'yes'|t('super-images') : 'no'|t('super-images') }}</li>
+        <li>{{ "Default profile"|t('super-images') }}: {{ settings.defaultProfile }}</li>
+        <li>{{ "Default format"|t('super-images') }}: {{ settings.defaultFormat }}</li>
+        <li>{{ "Driver"|t('super-images') }}: {{ settings.driver }}</li>
+        <li>{{ "Delivery mode"|t('super-images') }}: {{ settings.delivery.mode ?? 'lazy' }}</li>
+    </ul>
+
+    <h2>{{ "Storage"|t('super-images') }}</h2>
+    <ul class="padded">
+        <li>{{ "Default adapter"|t('super-images') }}: {{ settings.storage.default ?? 'local' }}</li>
+        <li>{{ "Markers"|t('super-images') }}: {{ (settings.storage.markers.enabled ?? true) ? 'enabled'|t('super-images') : 'disabled'|t('super-images') }} · {{ settings.storage.markers.path ?? '' }}</li>
+    </ul>
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ "Adapter"|t('super-images') }}</th>
+                <th>{{ "Type"|t('super-images') }}</th>
+                <th>{{ "Path / config"|t('super-images') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for name, adapter in settings.storage.adapters ?? {} %}
+                <tr>
+                    <td><code>{{ name }}</code></td>
+                    <td>{{ adapter.type ?? 'local' }}</td>
+                    <td><code>{{ adapter.path ?? adapter.bucket ?? '—' }}</code></td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>{{ "Profiles"|t('super-images') }}</h2>
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ "Profile"|t('super-images') }}</th>
+                <th>{{ "Formats"|t('super-images') }}</th>
+                <th>{{ "Variants"|t('super-images') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for handle, profile in settings.profiles %}
+                <tr>
+                    <td><code>{{ handle }}</code></td>
+                    <td>{{ (profile.formats ?? [])|join(', ') }}</td>
+                    <td>{{ (profile.variants ?? {})|keys|join(', ') }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>{{ "Encoders"|t('super-images') }}</h2>
+    <pre class="pane" style="overflow:auto;"><code>{{ settings.encoders|json_encode(constant('JSON_PRETTY_PRINT')) }}</code></pre>
+
+    <h2>{{ "Optimizers"|t('super-images') }}</h2>
+    <ul class="padded">
+        <li>{{ "Enabled"|t('super-images') }}: {{ (settings.optimizers.enabled ?? true) ? 'yes'|t('super-images') : 'no'|t('super-images') }}</li>
+    </ul>
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ "Tool"|t('super-images') }}</th>
+                <th>{{ "Configured"|t('super-images') }}</th>
+                <th>{{ "Resolved"|t('super-images') }}</th>
+                <th>{{ "Available"|t('super-images') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tool, row in binaries %}
+                <tr>
+                    <td><code>{{ tool }}</code></td>
+                    <td>{{ row.configured ?? '—' }}</td>
+                    <td>{{ row.resolved ?? '—' }}</td>
+                    <td>{{ row.available ? 'yes'|t('super-images') : 'no'|t('super-images') }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>{{ "Cleanup"|t('super-images') }}</h2>
+    <ul class="padded">
+        <li>{{ "Preview retention (days)"|t('super-images') }}: {{ settings.cleanup.previewRetentionDays ?? 2 }}</li>
+        <li>{{ "Obsolete retention (days)"|t('super-images') }}: {{ settings.cleanup.obsoleteRetentionDays ?? 30 }}</li>
+        <li>{{ "Allow remote scan"|t('super-images') }}: {{ (settings.cleanup.allowRemoteScan ?? false) ? 'yes'|t('super-images') : 'no'|t('super-images') }}</li>
+    </ul>
+{% endblock %}

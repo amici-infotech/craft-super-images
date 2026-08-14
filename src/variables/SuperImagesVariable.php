@@ -2,8 +2,8 @@
 /**
  * Twig variable registered as `craft.superImages`.
  *
- * Phase 1 test helpers — eagerly generate derivatives via GenerationService.
- * Phase 2 will replace render-time generation with deterministic/signed URLs.
+ * Render-time helpers plan delivery URLs only — no image processing.
+ * Use generate()/tryGenerate() for explicit eager generation.
  *
  * @link      https://amiciinfotech.com
  * @copyright Copyright (c) 2026 Amici Infotech
@@ -14,6 +14,7 @@ namespace amici\SuperImages\variables;
 use amici\SuperImages\exceptions\SuperImagesException;
 use amici\SuperImages\models\GenerationRequest;
 use amici\SuperImages\models\GenerationResult;
+use amici\SuperImages\models\PlannedDelivery;
 use amici\SuperImages\Plugin;
 use Craft;
 use craft\elements\Asset;
@@ -56,18 +57,18 @@ class SuperImagesVariable
     }
 
     /**
-     * Generate (if needed) and return the public URL.
+     * Plan and return a delivery URL (lazy signed or eager storage URL).
      *
      * @param Asset|string|int $source
      * @param array<string, mixed> $options
      */
     public function url(Asset|string|int $source, array $options = []): string
     {
-        return $this->generate($source, $options)->url;
+        return $this->plan($source, $options)->deliveryUrl;
     }
 
     /**
-     * Generate an `<img>` tag for one derivative.
+     * Plan and return an `<img>` tag for one derivative.
      *
      * @param Asset|string|int $source
      * @param array<string, mixed> $options
@@ -75,7 +76,7 @@ class SuperImagesVariable
     public function img(Asset|string|int $source, array $options = []): Markup
     {
         try {
-            $result = $this->generate($source, $options);
+            $planned = $this->plan($source, $options);
         } catch (SuperImagesException $exception) {
             $message = Html::encode($exception->getMessage());
 
@@ -83,13 +84,19 @@ class SuperImagesVariable
         }
 
         $attrs = [
-            'src' => $result->url,
-            'width' => $result->width,
-            'height' => $result->height,
+            'src' => $planned->deliveryUrl,
             'alt' => (string) ($options['alt'] ?? $this->defaultAlt($source)),
             'loading' => $options['loading'] ?? 'lazy',
             'decoding' => $options['decoding'] ?? 'async',
         ];
+
+        if ($planned->widthHint !== null) {
+            $attrs['width'] = $planned->widthHint;
+        }
+
+        if ($planned->heightHint !== null) {
+            $attrs['height'] = $planned->heightHint;
+        }
 
         if (!empty($options['class'])) {
             $attrs['class'] = $options['class'];
@@ -103,7 +110,7 @@ class SuperImagesVariable
     }
 
     /**
-     * Generate a responsive `<picture>` with profile formats (or explicit formats).
+     * Plan a responsive `<picture>` with profile formats (or explicit formats).
      *
      * @param Asset|string|int $source
      * @param array<string, mixed> $options
@@ -120,7 +127,6 @@ class SuperImagesVariable
             $formats = ['webp', 'jpg'];
         }
 
-        // Prefer modern formats first for <source>, keep last as <img> fallback.
         $ordered = $this->orderFormats($formats);
         $fallback = array_pop($ordered) ?? 'jpg';
 
@@ -128,34 +134,40 @@ class SuperImagesVariable
         $sizes = (string) ($options['sizes'] ?? '100vw');
 
         foreach ($ordered as $format) {
-            $result = $this->generate($source, array_merge($options, [
+            $planned = $this->plan($source, array_merge($options, [
                 'profile' => $profileName,
                 'variant' => $variant,
                 'format' => $format,
             ]));
 
             $html[] = Html::tag('source', '', [
-                'type' => $result->mime,
-                'srcset' => $result->url,
+                'type' => $this->mimeFromFormat($planned->format),
+                'srcset' => $planned->deliveryUrl,
                 'sizes' => $sizes,
             ]);
         }
 
-        $imgResult = $this->generate($source, array_merge($options, [
+        $imgPlanned = $this->plan($source, array_merge($options, [
             'profile' => $profileName,
             'variant' => $variant,
             'format' => $fallback,
         ]));
 
         $imgAttrs = [
-            'src' => $imgResult->url,
-            'width' => $imgResult->width,
-            'height' => $imgResult->height,
+            'src' => $imgPlanned->deliveryUrl,
             'alt' => (string) ($options['alt'] ?? $this->defaultAlt($source)),
             'loading' => $options['loading'] ?? 'lazy',
             'decoding' => $options['decoding'] ?? 'async',
             'sizes' => $sizes,
         ];
+
+        if ($imgPlanned->widthHint !== null) {
+            $imgAttrs['width'] = $imgPlanned->widthHint;
+        }
+
+        if ($imgPlanned->heightHint !== null) {
+            $imgAttrs['height'] = $imgPlanned->heightHint;
+        }
 
         if (!empty($options['class'])) {
             $imgAttrs['class'] = $options['class'];
@@ -188,12 +200,17 @@ class SuperImagesVariable
         $parts = [];
 
         foreach ($variants as $variant) {
-            $result = $this->generate($source, [
+            $planned = $this->plan($source, [
                 'profile' => $profileName,
                 'variant' => (string) $variant,
                 'format' => $format,
             ]);
-            $parts[] = $result->url . ' ' . $result->width . 'w';
+
+            $descriptor = $planned->widthHint !== null
+                ? $planned->widthHint . 'w'
+                : $planned->variant . 'w';
+
+            $parts[] = $planned->deliveryUrl . ' ' . $descriptor;
         }
 
         return implode(', ', $parts);
@@ -209,6 +226,17 @@ class SuperImagesVariable
 
         return in_array($format, $driver->capabilities()->formats, true)
             || in_array(strtolower($format) === 'jpeg' ? 'jpg' : $format, $driver->capabilities()->formats, true);
+    }
+
+    /**
+     * @param Asset|string|int $source
+     * @param array<string, mixed> $options
+     */
+    private function plan(Asset|string|int $source, array $options = []): PlannedDelivery
+    {
+        return Plugin::getInstance()->getDeliveryUrls()->plan(
+            $this->buildRequest($source, $options),
+        );
     }
 
     /**
@@ -272,5 +300,17 @@ class SuperImagesVariable
         });
 
         return $normalized;
+    }
+
+    private function mimeFromFormat(string $format): string
+    {
+        return match (strtolower($format)) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'avif' => 'image/avif',
+            'gif' => 'image/gif',
+            default => 'application/octet-stream',
+        };
     }
 }

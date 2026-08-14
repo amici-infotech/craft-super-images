@@ -1,0 +1,61 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Diagnostics"|t('super-images') %}
+{% set selectedSubnavItem = 'diagnostics' %}
+{% set crumbs = [
+    { label: "Super Images"|t('super-images'), url: cpUrl('super-images') },
+] %}
+
+{% block content %}
+    <div class="readable">
+        <p>{{ "Doctor checks for drivers, storage, signing, optimizers, and queue health."|t('super-images') }}</p>
+    </div>
+
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ "Status"|t('super-images') }}</th>
+                <th>{{ "Check"|t('super-images') }}</th>
+                <th>{{ "Detail"|t('super-images') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for check in checks %}
+                <tr>
+                    <td>
+                        {% switch check.status %}
+                            {% case 'pass' %}<span class="status green"></span> PASS
+                            {% case 'warn' %}<span class="status orange"></span> WARN
+                            {% case 'fail' %}<span class="status red"></span> FAIL
+                        {% endswitch %}
+                    </td>
+                    <td>{{ check.label }}</td>
+                    <td>{{ check.detail }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <hr>
+    <h2>{{ "Optimizer binaries"|t('super-images') }}</h2>
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ "Tool"|t('super-images') }}</th>
+                <th>{{ "Configured"|t('super-images') }}</th>
+                <th>{{ "Resolved"|t('super-images') }}</th>
+                <th>{{ "Available"|t('super-images') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tool, row in binaries %}
+                <tr>
+                    <td><code>{{ tool }}</code></td>
+                    <td>{{ row.configured ?? '—' }}</td>
+                    <td>{{ row.resolved ?? '—' }}</td>
+                    <td>{{ row.available ? 'yes'|t('super-images') : 'no'|t('super-images') }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

@@ -23,6 +23,8 @@ final class GenerationRequest
         public readonly ?VolumeFolder $folder = null,
         public readonly ?FieldInterface $field = null,
         public readonly ?string $storageAdapter = null,
+        /** When true, derivatives are stored under a preview/ namespace (Playground). */
+        public readonly bool $preview = false,
     ) {
     }
 

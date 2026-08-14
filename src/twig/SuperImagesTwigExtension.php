@@ -1,6 +1,6 @@
 <?php
 /**
- * Twig filters for Super Images (Phase 1 test helpers).
+ * Twig filters for Super Images delivery helpers (URL planning only).
  *
  * @link      https://amiciinfotech.com
  * @copyright Copyright (c) 2026 Amici Infotech

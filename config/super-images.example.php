@@ -16,6 +16,10 @@ return [
     'defaultFormat' => 'webp',
     'driver' => 'auto',
 
+    'delivery' => [
+        'mode' => 'lazy', // eager|lazy|hybrid
+    ],
+
     'autoGenerate' => [
         'enabled' => true,
         'onUpload' => true,
@@ -78,17 +82,31 @@ return [
         ],
     ],
 
+    // Native driver encode options (quality, etc.). Encoding is done by the selected image driver.
     'encoders' => [
         'jpeg' => ['quality' => 82],
         'webp' => ['quality' => 80],
         'avif' => ['quality' => 65],
     ],
 
+    // Optional post-encode binary optimizers. Paths often differ per OS — use env vars.
     'optimizers' => [
         'enabled' => true,
+        'binaries' => [
+            // macOS Homebrew example: '/opt/homebrew/bin/jpegoptim'
+            // Ubuntu apt example:     '/usr/bin/jpegoptim'
+            'jpegoptim' => App::env('SUPER_IMAGES_JPEGOPTIM') ?: 'jpegoptim',
+            'oxipng' => App::env('SUPER_IMAGES_OXIPNG') ?: 'oxipng',
+            'optipng' => App::env('SUPER_IMAGES_OPTIPNG') ?: 'optipng',
+            'pngquant' => App::env('SUPER_IMAGES_PNGQUANT') ?: 'pngquant',
+            'cwebp' => App::env('SUPER_IMAGES_CWEBP') ?: 'cwebp',
+            'avifenc' => App::env('SUPER_IMAGES_AVIFENC') ?: 'avifenc',
+        ],
+        // Per-format tool selection. Use null to skip. Or:
+        // 'jpeg' => ['tool' => 'jpegoptim', 'binary' => App::env('SUPER_IMAGES_JPEGOPTIM')],
         'jpeg' => 'jpegoptim',
         'png' => 'oxipng',
-        'webp' => null,
+        'webp' => null, // set to 'cwebp' to re-optimize WebP via libwebp
         'avif' => null,
     ],
 
@@ -127,5 +145,7 @@ return [
     'cleanup' => [
         'previewRetentionDays' => 2,
         'obsoleteRetentionDays' => 30,
+        // Remote listing is expensive; keep false unless you know you need it.
+        'allowRemoteScan' => false,
     ],
 ];

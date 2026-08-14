@@ -3,6 +3,7 @@
 namespace amici\SuperImages\registries;
 
 use amici\SuperImages\contracts\StorageAdapterInterface;
+use amici\SuperImages\events\RegisterStorageAdaptersEvent;
 use amici\SuperImages\exceptions\StorageConfigurationException;
 use amici\SuperImages\storage\LocalStorageAdapter;
 use amici\SuperImages\storage\S3CompatibleStorageAdapter;
@@ -13,6 +14,8 @@ use yii\base\Component;
  */
 class StorageManager extends Component
 {
+    public const EVENT_REGISTER_STORAGE_ADAPTERS = 'registerStorageAdapters';
+
     /** @var array<string, StorageAdapterInterface> */
     private array $_adapters = [];
 
@@ -40,6 +43,13 @@ class StorageManager extends Component
             if ($type === 'local') {
                 $this->register($name, new LocalStorageAdapter($name, $config), $config);
             }
+        }
+
+        $event = new RegisterStorageAdaptersEvent();
+        $this->trigger(self::EVENT_REGISTER_STORAGE_ADAPTERS, $event);
+
+        foreach ($event->adapters as $name => $adapter) {
+            $this->register($name, $adapter, $event->configs[$name] ?? []);
         }
     }
 

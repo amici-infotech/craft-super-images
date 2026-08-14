@@ -28,9 +28,9 @@ class BinaryOptimizer implements OptimizerInterface
         return in_array(strtolower($format), ['jpeg', 'jpg', 'png', 'webp', 'avif'], true);
     }
 
-    public function canOptimize(string $tool): bool
+    public function canOptimize(string $tool, ?string $binaryPath = null): bool
     {
-        return Plugin::getInstance()->getProcessRunner()->isExecutableAvailable($tool);
+        return Plugin::getInstance()->getBinaryResolver()->isAvailable($tool, $binaryPath);
     }
 
     /**
@@ -38,18 +38,27 @@ class BinaryOptimizer implements OptimizerInterface
      */
     public function optimize(EncodedImage $encoded, string $format, array $options = []): EncodedImage
     {
-        $tool = (string) ($options['tool'] ?? '');
+        $tool = strtolower((string) ($options['tool'] ?? ''));
         if ($tool === '') {
             return $encoded;
         }
 
         $plugin = Plugin::getInstance();
+        $binaryPath = isset($options['binary']) && is_string($options['binary']) && $options['binary'] !== ''
+            ? $options['binary']
+            : null;
+        $binary = $plugin->getBinaryResolver()->resolve($tool, $binaryPath);
+
+        if ($binary === null) {
+            return $encoded;
+        }
+
         $processRunner = $plugin->getProcessRunner();
         $temporaryFiles = $plugin->getTemporaryFiles();
 
         $input = $this->resolveInputPath($encoded, $temporaryFiles);
         $output = $temporaryFiles->create('optimized-', $this->extensionForFormat($format));
-        $command = $this->buildCommand($tool, $format, $input, $output, $options);
+        $command = $this->buildCommand($tool, $binary, $format, $input, $output, $options);
         $result = $processRunner->run($command);
 
         if ($result['exitCode'] !== 0) {
@@ -58,9 +67,15 @@ class BinaryOptimizer implements OptimizerInterface
         }
 
         $finalPath = $output;
-        if ($tool === 'jpegoptim' && is_readable($input)) {
-            // jpegoptim typically optimizes in place.
-            $finalPath = $input;
+
+        if ($tool === 'jpegoptim') {
+            // --stdout emits optimized bytes on stdout; persist them to the temp output path.
+            if ($result['stdout'] !== '') {
+                file_put_contents($output, $result['stdout']);
+                $finalPath = $output;
+            } elseif (is_readable($input)) {
+                $finalPath = $input;
+            }
         }
 
         if (!is_readable($finalPath) || filesize($finalPath) === 0) {
@@ -74,17 +89,23 @@ class BinaryOptimizer implements OptimizerInterface
      * @param array<string, mixed> $options
      * @return list<string>
      */
-    private function buildCommand(string $tool, string $format, string $input, string $output, array $options): array
-    {
+    private function buildCommand(
+        string $tool,
+        string $binary,
+        string $format,
+        string $input,
+        string $output,
+        array $options,
+    ): array {
         $format = strtolower($format) === 'jpg' ? 'jpeg' : strtolower($format);
 
         return match ($tool) {
-            'jpegoptim' => ['jpegoptim', '--stdout', '--strip-all', $input],
-            'oxipng' => ['oxipng', '-o', '2', '--out', $output, $input],
-            'optipng' => ['optipng', '-out', $output, $input],
-            'pngquant' => ['pngquant', '--force', '--output', $output, $input],
-            'cwebp' => ['cwebp', '-q', (string) ($options['quality'] ?? 80), $input, '-o', $output],
-            'avifenc' => ['avifenc', $input, $output],
+            'jpegoptim' => [$binary, '--stdout', '--strip-all', $input],
+            'oxipng' => [$binary, '-o', '2', '--out', $output, $input],
+            'optipng' => [$binary, '-out', $output, $input],
+            'pngquant' => [$binary, '--force', '--output', $output, $input],
+            'cwebp' => [$binary, '-q', (string) ($options['quality'] ?? 80), $input, '-o', $output],
+            'avifenc' => [$binary, $input, $output],
             default => throw new OptimizerUnavailableException(sprintf('Unknown optimizer tool "%s".', $tool)),
         };
     }

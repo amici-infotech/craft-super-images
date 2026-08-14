@@ -9,6 +9,7 @@
 namespace amici\SuperImages\registries;
 
 use amici\SuperImages\contracts\OptimizerInterface;
+use amici\SuperImages\events\RegisterOptimizersEvent;
 use amici\SuperImages\optimizers\BinaryOptimizer;
 use amici\SuperImages\optimizers\NullOptimizer;
 use yii\base\Component;
@@ -18,6 +19,8 @@ use yii\base\Component;
  */
 class OptimizerManager extends Component
 {
+    public const EVENT_REGISTER_OPTIMIZERS = 'registerOptimizers';
+
     private ?NullOptimizer $_nullOptimizer = null;
     private ?BinaryOptimizer $_binaryOptimizer = null;
 
@@ -28,6 +31,13 @@ class OptimizerManager extends Component
     {
         $this->register($this->nullOptimizer());
         $this->register($this->binaryOptimizer());
+
+        $event = new RegisterOptimizersEvent();
+        $this->trigger(self::EVENT_REGISTER_OPTIMIZERS, $event);
+
+        foreach ($event->optimizers as $optimizer) {
+            $this->register($optimizer);
+        }
     }
 
     public function register(OptimizerInterface $optimizer): void
@@ -46,18 +56,45 @@ class OptimizerManager extends Component
 
         $format = strtolower($format);
         $format = $format === 'jpg' ? 'jpeg' : $format;
-        $tool = $config[$format] ?? null;
+        [$tool, $binaryPath] = $this->normalizeToolConfig($config[$format] ?? null);
 
         if ($tool === null || $tool === '') {
             return $this->nullOptimizer();
         }
 
         $binary = $this->binaryOptimizer();
-        if ($binary->supports($format) && $binary->canOptimize((string) $tool)) {
+        if ($binary->supports($format) && $binary->canOptimize($tool, $binaryPath)) {
             return $binary;
         }
 
         return $this->nullOptimizer();
+    }
+
+    /**
+     * @return array{0: ?string, 1: ?string} [tool, binaryPath]
+     */
+    public function normalizeToolConfig(mixed $value): array
+    {
+        if ($value === null || $value === '' || $value === false) {
+            return [null, null];
+        }
+
+        if (is_string($value)) {
+            return [strtolower($value), null];
+        }
+
+        if (!is_array($value)) {
+            return [null, null];
+        }
+
+        $tool = isset($value['tool']) && is_string($value['tool']) && $value['tool'] !== ''
+            ? strtolower($value['tool'])
+            : null;
+        $binary = isset($value['binary']) && is_string($value['binary']) && $value['binary'] !== ''
+            ? $value['binary']
+            : null;
+
+        return [$tool, $binary];
     }
 
     private function nullOptimizer(): NullOptimizer

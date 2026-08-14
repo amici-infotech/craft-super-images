@@ -1,16 +1,12 @@
 <?php
-/**
- * Orchestrates the canonical Phase 1 image-generation pipeline.
- *
- * @link      https://amiciinfotech.com
- * @copyright Copyright (c) 2026 Amici Infotech
- */
 
 namespace amici\SuperImages\services;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
+use amici\SuperImages\events\GenerationEvent;
 use amici\SuperImages\exceptions\ProcessingException;
 use amici\SuperImages\exceptions\SourceException;
+use amici\SuperImages\models\EffectiveConfig;
 use amici\SuperImages\models\EncodedImage;
 use amici\SuperImages\models\GenerationDefinition;
 use amici\SuperImages\models\GenerationRequest;
@@ -27,10 +23,64 @@ use yii\base\Component;
  */
 class GenerationService extends Component
 {
+    public const EVENT_BEFORE_GENERATE = 'beforeGenerate';
+    public const EVENT_AFTER_GENERATE = 'afterGenerate';
+    public const EVENT_BEFORE_ENCODE = 'beforeEncode';
+    public const EVENT_AFTER_ENCODE = 'afterEncode';
+
+    /**
+     * Plan a derivative without processing, encoding, or storage I/O.
+     *
+     * @return array{
+     *     identity: string,
+     *     storagePath: string,
+     *     definition: GenerationDefinition,
+     *     config: EffectiveConfig,
+     *     driverName: string,
+     *     storageUrl: string,
+     * }
+     */
+    public function plan(GenerationRequest $request): array
+    {
+        $plugin = Plugin::getInstance();
+        $this->validateRequest($request);
+
+        $sourceIdentity = $plugin->getSourceResolver()->resolveIdentity($request);
+        $config = $plugin->getConfigurationResolver()->resolve($request);
+        $driver = $plugin->getDriverManager()->select($config->driver);
+
+        $definition = $plugin->getConfigurationResolver()->buildDefinition(
+            $request,
+            $config,
+            $sourceIdentity,
+            $driver->name(),
+        );
+
+        $identity = $plugin->getGenerationIdentity()->calculate($definition, $driver->name());
+        $storagePath = $plugin->getStoragePathBuilder()->build(
+            $identity,
+            $definition->format,
+            $definition->profile,
+            $definition->variant,
+            $this->previewNamespace($request),
+        );
+
+        $adapter = $plugin->getStorageManager()->select($definition->storageAdapter);
+
+        return [
+            'identity' => $identity,
+            'storagePath' => $storagePath,
+            'definition' => $definition,
+            'config' => $config,
+            'driverName' => $driver->name(),
+            'storageUrl' => $adapter->url($storagePath),
+        ];
+    }
+
     /**
      * Generate one derivative for the given request.
      */
-    public function generate(GenerationRequest $request): GenerationResult
+    public function generate(GenerationRequest $request, bool $force = false): GenerationResult
     {
         $plugin = Plugin::getInstance();
         $started = microtime(true);
@@ -39,45 +89,95 @@ class GenerationService extends Component
         $driver = null;
 
         try {
-            $this->validateRequest($request);
+            $planned = $this->plan($request);
+            $identity = $planned['identity'];
+            $storagePath = $planned['storagePath'];
+            /** @var GenerationDefinition $definition */
+            $definition = $planned['definition'];
+            /** @var EffectiveConfig $config */
+            $config = $planned['config'];
+            $storageUrl = $planned['storageUrl'];
+
+            $beforeEvent = new GenerationEvent([
+                'request' => $request,
+                'definition' => $definition,
+                'identity' => $identity,
+            ]);
+            $this->trigger(self::EVENT_BEFORE_GENERATE, $beforeEvent);
+
+            if (!$force) {
+                $adapter = $plugin->getStorageManager()->select($definition->storageAdapter);
+                $objectExists = $adapter->exists($storagePath);
+                $markerExists = $plugin->getExistenceMarkers()->exists($identity);
+
+                if ($objectExists || $markerExists) {
+                    $result = new GenerationResult(
+                        success: true,
+                        identity: $identity,
+                        storagePath: $storagePath,
+                        url: $storageUrl,
+                        format: $definition->format,
+                        width: 0,
+                        height: 0,
+                        size: 0,
+                        mime: $this->mimeFromFormat($definition->format),
+                        durationMs: (microtime(true) - $started) * 1000,
+                        diagnostics: [
+                            'skipped' => true,
+                            'driver' => $planned['driverName'],
+                            'profile' => $definition->profile,
+                            'variant' => $definition->variant,
+                            'preview' => $request->preview,
+                        ],
+                    );
+
+                    $this->trigger(self::EVENT_AFTER_GENERATE, new GenerationEvent([
+                        'request' => $request,
+                        'definition' => $definition,
+                        'identity' => $identity,
+                        'result' => $result,
+                    ]));
+
+                    return $result;
+                }
+            }
 
             $source = $plugin->getSourceResolver()->resolve($request);
-            $config = $plugin->getConfigurationResolver()->resolve($request);
-            $driver = $plugin->getDriverManager()->select($config->driver);
-
-            $definition = $plugin->getConfigurationResolver()->buildDefinition(
-                $request,
-                $config,
-                $source->identity,
-                $driver->name(),
-            );
-
-            $identity = $plugin->getGenerationIdentity()->calculate($definition, $driver->name());
-            $storagePath = $plugin->getStoragePathBuilder()->build(
-                $identity,
-                $definition->format,
-                $definition->profile,
-                $definition->variant,
-            );
+            $driver = $plugin->getDriverManager()->select($definition->driverPreference);
 
             $handle = $driver->load($source);
             $handle = $plugin->getOperationPipeline()->apply($handle, $driver, $definition->operations);
 
+            $this->trigger(self::EVENT_BEFORE_ENCODE, new GenerationEvent([
+                'request' => $request,
+                'definition' => $definition,
+                'identity' => $identity,
+            ]));
+
             $encoder = $plugin->getEncoderManager()->select($definition->format);
             $encoded = $encoder->encode($handle, $definition->format, $definition->encodeOptions, $driver);
+
+            $this->trigger(self::EVENT_AFTER_ENCODE, new GenerationEvent([
+                'request' => $request,
+                'definition' => $definition,
+                'identity' => $identity,
+            ]));
 
             $optimizer = $plugin->getOptimizerManager()->select(
                 $definition->format,
                 $definition->optimizerOptions,
                 $config->optimizersEnabled,
             );
-            $optimizerTool = $definition->optimizerOptions[$definition->format]
-                ?? $definition->optimizerOptions[$this->normalizeFormatKey($definition->format)]
+            $formatKey = $this->normalizeFormatKey($definition->format);
+            $rawTool = $definition->optimizerOptions[$definition->format]
+                ?? $definition->optimizerOptions[$formatKey]
                 ?? null;
-            $encoded = $optimizer->optimize($encoded, $definition->format, [
+            [$optimizerTool, $optimizerBinary] = $plugin->getOptimizerManager()->normalizeToolConfig($rawTool);
+            $encoded = $optimizer->optimize($encoded, $definition->format, array_filter([
                 'tool' => $optimizerTool,
+                'binary' => $optimizerBinary,
                 'quality' => $definition->encodeOptions->quality,
-            ]);
+            ], static fn(mixed $value): bool => $value !== null && $value !== ''));
 
             $this->validateEncodedOutput($encoded);
 
@@ -91,8 +191,7 @@ class GenerationService extends Component
                 ? $adapter->writeFile($storagePath, (string) $encoded->path, $writeOptions)
                 : $adapter->write($storagePath, (string) $encoded->bytes, $writeOptions);
 
-            // Markers are for remote/CDN storage existence checks — never webroot image mirrors.
-            if ($adapter->capabilities()->remote) {
+            if ($adapter->capabilities()->remote && !$request->preview) {
                 $plugin->getExistenceMarkers()->write($identity, [
                     'path' => $storagePath,
                     'format' => $definition->format,
@@ -100,7 +199,7 @@ class GenerationService extends Component
                 ]);
             }
 
-            return new GenerationResult(
+            $result = new GenerationResult(
                 success: true,
                 identity: $identity,
                 storagePath: $storageObject->path,
@@ -115,8 +214,19 @@ class GenerationService extends Component
                     'driver' => $driver->name(),
                     'profile' => $definition->profile,
                     'variant' => $definition->variant,
+                    'preview' => $request->preview,
+                    'optimizer' => $optimizer->name(),
                 ],
             );
+
+            $this->trigger(self::EVENT_AFTER_GENERATE, new GenerationEvent([
+                'request' => $request,
+                'definition' => $definition,
+                'identity' => $identity,
+                'result' => $result,
+            ]));
+
+            return $result;
         } finally {
             if ($handle instanceof ImageHandle && $driver instanceof ImageDriverInterface) {
                 $driver->destroy($handle);
@@ -124,6 +234,15 @@ class GenerationService extends Component
 
             $plugin->getTemporaryFiles()->cleanup();
         }
+    }
+
+    private function previewNamespace(GenerationRequest $request): ?string
+    {
+        if (!$request->preview) {
+            return null;
+        }
+
+        return 'preview/' . date('Ymd');
     }
 
     private function validateRequest(GenerationRequest $request): void
@@ -146,6 +265,18 @@ class GenerationService extends Component
         if (!$encoded->hasBytes() && !$encoded->hasPath()) {
             throw new ProcessingException('Encoded output has no readable payload.');
         }
+    }
+
+    private function mimeFromFormat(string $format): string
+    {
+        return match (strtolower($format)) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'avif' => 'image/avif',
+            'gif' => 'image/gif',
+            default => 'application/octet-stream',
+        };
     }
 
     private function normalizeFormatKey(string $format): string

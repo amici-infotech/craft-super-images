@@ -3,6 +3,7 @@
 namespace amici\SuperImages\registries;
 
 use amici\SuperImages\contracts\OperationInterface;
+use amici\SuperImages\events\RegisterOperationsEvent;
 use amici\SuperImages\exceptions\InvalidOperationException;
 use amici\SuperImages\models\OperationDefinition;
 use amici\SuperImages\operations\color\Brightness;
@@ -32,6 +33,8 @@ use yii\base\Component;
  */
 class OperationRegistry extends Component
 {
+    public const EVENT_REGISTER_OPERATIONS = 'registerOperations';
+
     /** @var array<string, class-string<OperationInterface>> */
     private array $_map = [];
 
@@ -57,6 +60,13 @@ class OperationRegistry extends Component
         $this->register('border', Border::class);
         $this->register('watermark', Watermark::class);
         $this->register('overlay', Overlay::class);
+
+        $event = new RegisterOperationsEvent();
+        $this->trigger(self::EVENT_REGISTER_OPERATIONS, $event);
+
+        foreach ($event->operations as $name => $class) {
+            $this->register($name, $class);
+        }
     }
 
     /**

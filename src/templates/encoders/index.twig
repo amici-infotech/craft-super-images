@@ -1,0 +1,61 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Encoders & Optimizers"|t('super-images') %}
+{% set selectedSubnavItem = 'encoders' %}
+{% set crumbs = [
+    { label: "Super Images"|t('super-images'), url: cpUrl('super-images') },
+] %}
+
+{% block content %}
+    <div class="readable">
+        <p>{{ "Capability overview for image drivers, configured encoders, optimizer binaries, and registered operations."|t('super-images') }}</p>
+    </div>
+
+    <h2>{{ "Drivers"|t('super-images') }}</h2>
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ "Driver"|t('super-images') }}</th>
+                <th>{{ "Available"|t('super-images') }}</th>
+                <th>{{ "Formats"|t('super-images') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for driver in drivers %}
+                <tr>
+                    <td><code>{{ driver.name }}</code></td>
+                    <td>{{ driver.available ? 'yes'|t('super-images') : 'no'|t('super-images') }}</td>
+                    <td>{{ driver.formats|join(', ') }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>{{ "Encoder config"|t('super-images') }}</h2>
+    <pre class="pane" style="overflow:auto;"><code>{{ settings.encoders|json_encode(constant('JSON_PRETTY_PRINT')) }}</code></pre>
+
+    <h2>{{ "Optimizer binaries"|t('super-images') }}</h2>
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ "Tool"|t('super-images') }}</th>
+                <th>{{ "Configured"|t('super-images') }}</th>
+                <th>{{ "Resolved"|t('super-images') }}</th>
+                <th>{{ "Available"|t('super-images') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tool, row in binaries %}
+                <tr>
+                    <td><code>{{ tool }}</code></td>
+                    <td>{{ row.configured ?? '—' }}</td>
+                    <td>{{ row.resolved ?? '—' }}</td>
+                    <td>{{ row.available ? 'yes'|t('super-images') : 'no'|t('super-images') }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>{{ "Operations"|t('super-images') }}</h2>
+    <p>{{ operations|join(', ') }}</p>
+{% endblock %}
