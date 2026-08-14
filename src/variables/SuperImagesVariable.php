@@ -69,6 +69,10 @@ class SuperImagesVariable
     /**
      * Plan and return a delivery URL (lazy signed or eager storage URL).
      *
+     * When planning fails for a missing or invalid Craft asset, and
+     * `policies.fallback` is enabled with a distinct fallback asset ID,
+     * retries once using that asset while preserving profile/variant/format options.
+     *
      * Options: `profile`, `variant`, `format`, `storage`.
      *
      * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
@@ -83,6 +87,8 @@ class SuperImagesVariable
 
     /**
      * Plan and return an `<img>` tag for one derivative.
+     *
+     * Applies the same fallback policy as {@see url()} when planning fails.
      *
      * Generation options: `profile`, `variant`, `format`, `storage`.
      *
@@ -135,6 +141,8 @@ class SuperImagesVariable
 
     /**
      * Plan a responsive `<picture>` with multi-width srcsets per format.
+     *
+     * Applies the same fallback policy as {@see url()} when planning fails.
      *
      * Uses profile variants (or explicit `variants`) as `w` descriptors.
      * Optional `variant` picks the fallback `<img src>` (default: middle / `md`).
@@ -260,6 +268,8 @@ class SuperImagesVariable
     /**
      * Build srcset for multiple variants of one format.
      *
+     * Applies the same fallback policy as {@see url()} when planning fails.
+     *
      * Options: `profile`, `format`, `variants`.
      *
      * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
@@ -317,16 +327,81 @@ class SuperImagesVariable
     /**
      * Plans delivery metadata without generating the derivative.
      *
+     * When planning fails with {@see SuperImagesException} and a distinct fallback
+     * asset is configured under `policies.fallback`, retries once with that asset.
+     *
      * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
      * @param array<string, mixed> $options Planning options.
+     * @param bool $allowFallback Whether a configured fallback asset may be attempted.
      *
      * @return PlannedDelivery Planned delivery URL and dimension hints.
      */
-    private function plan(Asset|string|int $source, array $options = []): PlannedDelivery
+    private function plan(Asset|string|int $source, array $options = [], bool $allowFallback = true): PlannedDelivery
     {
-        return Plugin::getInstance()->getDeliveryUrls()->plan(
-            $this->buildRequest($source, $options),
-        );
+        try {
+            return Plugin::getInstance()->getDeliveryUrls()->plan(
+                $this->buildRequest($source, $options),
+            );
+        } catch (SuperImagesException $exception) {
+            if (!$allowFallback) {
+                throw $exception;
+            }
+
+            $fallbackId = $this->resolveFallbackAssetId($source);
+            if ($fallbackId === null) {
+                throw $exception;
+            }
+
+            return $this->plan($fallbackId, $options, false);
+        }
+    }
+
+    /**
+     * Resolves a configured fallback Craft asset ID when policy allows it.
+     *
+     * @param Asset|string|int $source Original Twig source reference.
+     *
+     * @return int|null Fallback asset ID, or null when fallback is disabled or would recurse.
+     */
+    private function resolveFallbackAssetId(Asset|string|int $source): ?int
+    {
+        $policies = Plugin::getInstance()->getSettings()->policies['fallback'] ?? [];
+
+        if (!($policies['enabled'] ?? false)) {
+            return null;
+        }
+
+        $fallbackId = (int) ($policies['assetId'] ?? 0);
+        if ($fallbackId <= 0) {
+            return null;
+        }
+
+        $requestedId = $this->requestedAssetId($source);
+        if ($requestedId !== null && $requestedId === $fallbackId) {
+            return null;
+        }
+
+        return $fallbackId;
+    }
+
+    /**
+     * Extracts a Craft asset ID from a Twig source reference when available.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     *
+     * @return int|null Asset ID when the source is asset-backed.
+     */
+    private function requestedAssetId(Asset|string|int $source): ?int
+    {
+        if ($source instanceof Asset) {
+            return (int) $source->id;
+        }
+
+        if (is_int($source) || (is_string($source) && ctype_digit($source))) {
+            return (int) $source;
+        }
+
+        return null;
     }
 
     /**

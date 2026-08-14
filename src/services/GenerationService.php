@@ -9,6 +9,7 @@
 namespace amici\SuperImages\services;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
+use amici\SuperImages\drivers\AbstractDriver;
 use amici\SuperImages\events\GenerationEvent;
 use amici\SuperImages\exceptions\ProcessingException;
 use amici\SuperImages\exceptions\SourceException;
@@ -188,6 +189,20 @@ class GenerationService extends Component
             $driver = $plugin->getDriverManager()->select($definition->driverPreference);
 
             $handle = $driver->load($source);
+
+            $sourcePixels = $handle->width * $handle->height;
+            if ($sourcePixels > $config->maxSourcePixels) {
+                throw new ProcessingException(sprintf(
+                    'Source image exceeds maximum allowed pixels (%d > %d).',
+                    $sourcePixels,
+                    $config->maxSourcePixels,
+                ));
+            }
+
+            if ($driver instanceof AbstractDriver) {
+                $driver->setAllowUpscale($config->allowUpscale);
+            }
+
             $handle = $plugin->getOperationPipeline()->apply($handle, $driver, $definition->operations);
 
             $this->trigger(self::EVENT_BEFORE_ENCODE, new GenerationEvent([
@@ -234,11 +249,26 @@ class GenerationService extends Component
                 : $adapter->write($storagePath, (string) $encoded->bytes, $writeOptions);
 
             if ($adapter->capabilities()->remote && !$request->preview) {
-                $plugin->getExistenceMarkers()->write($identity, [
+                $markerMetadata = [
                     'path' => $storagePath,
                     'format' => $definition->format,
                     'adapter' => $adapter->name(),
-                ]);
+                ];
+
+                if ($request->assetId !== null) {
+                    $markerMetadata['assetId'] = $request->assetId;
+                }
+
+                $plugin->getExistenceMarkers()->write($identity, $markerMetadata);
+            }
+
+            if (!$request->preview && $request->assetId !== null) {
+                $plugin->getAssetDerivativeIndex()->record(
+                    $request->assetId,
+                    $identity,
+                    $storageObject->path,
+                    $adapter->name(),
+                );
             }
 
             $result = new GenerationResult(

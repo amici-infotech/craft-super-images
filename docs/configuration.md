@@ -33,6 +33,7 @@ Every key in the example file is commented. Live servers are assumed to be **Ubu
 | `profiles` | Variants × formats |
 | `volumes` / `folders` / `fields` | Scoped overrides |
 | `cleanup` | Preview / obsolete retention |
+| `policies` | Encode, geometry, safety, cleanup, fallback — see [Policies](./policies.md) |
 
 ---
 

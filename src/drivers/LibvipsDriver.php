@@ -135,6 +135,15 @@ final class LibvipsDriver extends AbstractDriver
             default => throw new UnsupportedFormatException(sprintf('Format "%s" is not supported by Libvips.', $format)),
         };
 
+        $progressive = (bool)($options->extra['progressive'] ?? false);
+        if ($progressive && in_array($format, ['jpeg', 'jpg'], true)) {
+            $saveOptions['interlace'] = true;
+        }
+
+        if ($format === 'png' && array_key_exists('pngCompression', $options->extra)) {
+            $saveOptions['compression'] = max(0, min(9, (int)$options->extra['pngCompression']));
+        }
+
         $bytes = $image->writeToBuffer('.' . $format, $saveOptions);
 
         return new EncodedImage(
@@ -191,6 +200,7 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function crop(ImageHandle $handle, int $width, int $height, string $position = 'center-center'): ImageHandle
     {
+        [$width, $height] = $this->limitUpscale($handle->width, $handle->height, $width, $height);
         [$srcX, $srcY, $cropWidth, $cropHeight] = $this->calculateCropBox(
             $handle->width,
             $handle->height,
@@ -255,6 +265,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function scale(ImageHandle $handle, float $factor): ImageHandle
     {
+        if (!$this->allowUpscale && $factor > 1.0) {
+            $factor = 1.0;
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
         $scaled = $image->resize($factor, ['vscale' => $factor]);
@@ -415,16 +429,16 @@ final class LibvipsDriver extends AbstractDriver
         if ($width !== null && $height === null) {
             $ratio = $width / max(1, $handle->width);
 
-            return [max(1, $width), max(1, (int)round($handle->height * $ratio))];
-        }
-
-        if ($height !== null && $width === null) {
+            $targets = [max(1, $width), max(1, (int)round($handle->height * $ratio))];
+        } elseif ($height !== null && $width === null) {
             $ratio = $height / max(1, $handle->height);
 
-            return [max(1, (int)round($handle->width * $ratio)), max(1, $height)];
+            $targets = [max(1, (int)round($handle->width * $ratio)), max(1, $height)];
+        } else {
+            $targets = [max(1, (int)$width), max(1, (int)$height)];
         }
 
-        return [max(1, (int)$width), max(1, (int)$height)];
+        return $this->limitUpscale($handle->width, $handle->height, $targets[0], $targets[1]);
     }
 
     /**

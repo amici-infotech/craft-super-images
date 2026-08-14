@@ -140,6 +140,71 @@ class CleanupService extends Component
     }
 
     /**
+     * Delete all indexed derivatives for a Craft asset.
+     *
+     * Reads the per-asset derivative index, deletes storage objects and existence
+     * markers, then clears the index when not in dry-run mode.
+     *
+     * @param int $assetId Craft asset element ID.
+     * @param bool $dryRun When true, report candidates without deleting files.
+     *
+     * @return array<string, mixed> Cleanup report with candidates, deleted, errors, and paths.
+     */
+    public function purgeAssetDerivatives(int $assetId, bool $dryRun = false): array
+    {
+        $plugin = Plugin::getInstance();
+        $entries = $plugin->getAssetDerivativeIndex()->entries($assetId);
+
+        $result = [
+            'dryRun' => $dryRun,
+            'assetId' => $assetId,
+            'candidates' => count($entries),
+            'deleted' => 0,
+            'errors' => 0,
+            'paths' => [],
+            'pathsTruncated' => false,
+        ];
+
+        foreach ($entries as $entry) {
+            $identity = $entry['identity'];
+            $storagePath = $entry['storagePath'];
+            $adapterName = $entry['adapter'] !== ''
+                ? $entry['adapter']
+                : (string) ($plugin->getSettings()->storage['default'] ?? 'local');
+
+            $this->appendPath($result, $storagePath, $dryRun ? 'candidate' : 'deleted');
+
+            if ($dryRun) {
+                continue;
+            }
+
+            try {
+                $adapter = $plugin->getStorageManager()->select($adapterName);
+                $adapter->delete($storagePath);
+                $plugin->getExistenceMarkers()->delete($identity);
+                $result['deleted']++;
+            } catch (\Throwable $exception) {
+                $result['errors']++;
+                Craft::warning(
+                    sprintf(
+                        'Failed to purge derivative "%s" for asset %d: %s',
+                        $identity,
+                        $assetId,
+                        $exception->getMessage(),
+                    ),
+                    __METHOD__,
+                );
+            }
+        }
+
+        if (!$dryRun && $result['errors'] === 0) {
+            $plugin->getAssetDerivativeIndex()->clear($assetId);
+        }
+
+        return $result;
+    }
+
+    /**
      * Validate that a relative storage path is safe for preview cleanup.
      *
      * @param string $relative Path relative to the storage root.

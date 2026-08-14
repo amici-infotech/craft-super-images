@@ -37,6 +37,10 @@ final class AutoGenerateService extends Component
             return;
         }
 
+        if (!$isNew && $this->assetFileChanged($asset)) {
+            $this->purgeOnReplaceIfEnabled($asset);
+        }
+
         $this->enqueue($asset);
     }
 
@@ -171,5 +175,37 @@ final class AutoGenerateService extends Component
     private function focalPointChanged(Asset $asset): bool
     {
         return in_array('focalPoint', $asset->getDirtyAttributes(), true);
+    }
+
+    /**
+     * Purges indexed derivatives when asset-replace cleanup policy is enabled.
+     *
+     * Failures are logged and do not block subsequent generation enqueue.
+     *
+     * @param Asset $asset The asset whose file was replaced.
+     *
+     * @return void
+     */
+    private function purgeOnReplaceIfEnabled(Asset $asset): void
+    {
+        $settings = Plugin::getInstance()->getSettings();
+        $cleanupPolicy = $settings->policies['cleanup'] ?? [];
+
+        if (!($cleanupPolicy['onAssetReplace'] ?? true)) {
+            return;
+        }
+
+        try {
+            Plugin::getInstance()->getCleanup()->purgeAssetDerivatives((int) $asset->id);
+        } catch (\Throwable $exception) {
+            Craft::warning(
+                sprintf(
+                    'Failed to purge derivatives for replaced asset %d: %s',
+                    (int) $asset->id,
+                    $exception->getMessage(),
+                ),
+                __METHOD__,
+            );
+        }
     }
 }

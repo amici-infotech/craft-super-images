@@ -212,4 +212,41 @@ return [
         // Allow expensive remote storage listing during cleanup (keep false).
         'allowRemoteScan' => false,
     ],
+
+    // Global generation policies — applied to every derivative unless overridden later.
+    'policies' => [
+        // Encode defaults merged into per-format encoder settings (format keys win).
+        'encode' => [
+            // Strip EXIF/IPTC and other metadata on output (recommended for web delivery).
+            'stripMetadata' => true,
+            // Progressive JPEG / interlaced PNG where the active driver supports it.
+            'progressive' => false,
+            // PNG zlib compression level (0 = none, 9 = max). Does not affect JPEG/WebP quality.
+            'pngCompression' => 6,
+        ],
+        // Geometry guardrails for resize, crop, fit, fill, and scale operations.
+        'geometry' => [
+            // When false, output never exceeds source dimensions (small sources stay small).
+            'allowUpscale' => false,
+        ],
+        // Safety limits checked after the source is loaded into memory.
+        'safety' => [
+            // Reject sources whose width×height exceeds this pixel count.
+            'maxSourcePixels' => 40_000_000,
+        ],
+        // Asset lifecycle hooks for derivative cleanup (separate from retention days above).
+        'cleanup' => [
+            // Remove stored derivatives when a Craft Asset is deleted.
+            'onAssetDelete' => true,
+            // Remove stored derivatives when a Craft Asset file is replaced.
+            'onAssetReplace' => true,
+        ],
+        // Fallback when a source cannot be resolved or generation fails planning.
+        'fallback' => [
+            // When true, substitute the configured Craft Asset instead of failing.
+            'enabled' => false,
+            // Craft Asset ID to serve as the fallback source image.
+            'assetId' => null,
+        ],
+    ],
 ];

@@ -18,7 +18,7 @@ use craft\base\Model;
 class Settings extends Model
 {
     /** @var int Schema version included in generation identity payloads. */
-    public const SCHEMA_VERSION = 1;
+    public const SCHEMA_VERSION = 2;
 
     /** @var bool Whether the plugin processes generation requests. */
     public bool $enabled = true;
@@ -166,6 +166,30 @@ class Settings extends Model
         'allowRemoteScan' => false,
     ];
 
+    /** @var array<string, mixed> Global generation policies (encode, geometry, safety, cleanup, fallback). */
+    public array $policies = [
+        'encode' => [
+            'stripMetadata' => true,
+            'progressive' => false, // progressive JPEG / interlace where supported
+            'pngCompression' => 6,  // 0–9
+        ],
+        'geometry' => [
+            'allowUpscale' => false,
+        ],
+        'safety' => [
+            'maxSourcePixels' => 40_000_000, // reject huge sources after load
+        ],
+        'cleanup' => [
+            'onAssetDelete' => true,
+            'onAssetReplace' => true,
+        ],
+        'fallback' => [
+            'enabled' => false,
+            // Craft asset ID used when the requested source cannot be planned/generated
+            'assetId' => null,
+        ],
+    ];
+
     /**
      * Exports settings as a plain array for config merging and diagnostics.
      *
@@ -191,6 +215,7 @@ class Settings extends Model
             'folders' => $this->folders,
             'fields' => $this->fields,
             'cleanup' => $this->cleanup,
+            'policies' => $this->policies,
         ];
     }
 }

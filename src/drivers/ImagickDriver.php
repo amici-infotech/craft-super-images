@@ -139,6 +139,16 @@ final class ImagickDriver extends AbstractDriver
             $imagick->stripImage();
         }
 
+        $progressive = (bool)($options->extra['progressive'] ?? false);
+        if ($progressive && in_array($format, ['jpeg', 'jpg'], true)) {
+            $imagick->setInterlaceScheme(Imagick::INTERLACE_PLANE);
+        }
+
+        if ($format === 'png') {
+            $compression = max(0, min(9, (int)($options->extra['pngCompression'] ?? 6)));
+            $imagick->setOption('png:compression-level', (string)$compression);
+        }
+
         $bytes = $imagick->getImagesBlob();
 
         return new EncodedImage(
@@ -200,6 +210,7 @@ final class ImagickDriver extends AbstractDriver
     {
         /** @var Imagick $imagick */
         $imagick = clone $handle->resource;
+        [$width, $height] = $this->limitUpscale($handle->width, $handle->height, $width, $height);
         [$srcX, $srcY, $cropWidth, $cropHeight] = $this->calculateCropBox(
             $handle->width,
             $handle->height,
@@ -259,6 +270,10 @@ final class ImagickDriver extends AbstractDriver
      */
     public function scale(ImageHandle $handle, float $factor): ImageHandle
     {
+        if (!$this->allowUpscale && $factor > 1.0) {
+            $factor = 1.0;
+        }
+
         $width = max(1, (int)round($handle->width * $factor));
         $height = max(1, (int)round($handle->height * $factor));
 
@@ -605,16 +620,16 @@ final class ImagickDriver extends AbstractDriver
         if ($width !== null && $height === null) {
             $ratio = $width / max(1, $handle->width);
 
-            return [max(1, $width), max(1, (int)round($handle->height * $ratio))];
-        }
-
-        if ($height !== null && $width === null) {
+            $targets = [max(1, $width), max(1, (int)round($handle->height * $ratio))];
+        } elseif ($height !== null && $width === null) {
             $ratio = $height / max(1, $handle->height);
 
-            return [max(1, (int)round($handle->width * $ratio)), max(1, $height)];
+            $targets = [max(1, (int)round($handle->width * $ratio)), max(1, $height)];
+        } else {
+            $targets = [max(1, (int)$width), max(1, (int)$height)];
         }
 
-        return [max(1, (int)$width), max(1, (int)$height)];
+        return $this->limitUpscale($handle->width, $handle->height, $targets[0], $targets[1]);
     }
 
     /**

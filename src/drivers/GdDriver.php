@@ -134,11 +134,18 @@ final class GdDriver extends AbstractDriver
     public function encodeNative(ImageHandle $handle, string $format, EncodeOptions $options): EncodedImage
     {
         $format = $this->normalizeFormat($format);
+        $progressive = (bool)($options->extra['progressive'] ?? false);
+        $pngCompression = max(0, min(9, (int)($options->extra['pngCompression'] ?? 6)));
+
+        if ($progressive && in_array($format, ['jpeg', 'jpg'], true)) {
+            imageinterlace($handle->resource, 1);
+        }
+
         ob_start();
 
         $success = match ($format) {
             'jpeg', 'jpg' => imagejpeg($handle->resource, null, $options->qualityOrDefault(82)),
-            'png' => imagepng($handle->resource, null, 6),
+            'png' => imagepng($handle->resource, null, $pngCompression),
             'webp' => imagewebp($handle->resource, null, $options->qualityOrDefault(80)),
             'avif' => function_exists('imageavif')
                 ? imageavif($handle->resource, null, $options->qualityOrDefault(65))
@@ -221,6 +228,7 @@ final class GdDriver extends AbstractDriver
      */
     public function crop(ImageHandle $handle, int $width, int $height, string $position = 'center-center'): ImageHandle
     {
+        [$width, $height] = $this->limitUpscale($handle->width, $handle->height, $width, $height);
         [$srcX, $srcY, $cropWidth, $cropHeight] = $this->calculateCropBox(
             $handle->width,
             $handle->height,
@@ -293,6 +301,10 @@ final class GdDriver extends AbstractDriver
      */
     public function scale(ImageHandle $handle, float $factor): ImageHandle
     {
+        if (!$this->allowUpscale && $factor > 1.0) {
+            $factor = 1.0;
+        }
+
         $width = max(1, (int)round($handle->width * $factor));
         $height = max(1, (int)round($handle->height * $factor));
 
@@ -599,22 +611,20 @@ final class GdDriver extends AbstractDriver
         if ($mode === 'scale' && $width !== null && $height === null) {
             $ratio = $width / max(1, $handle->width);
 
-            return [max(1, $width), max(1, (int)round($handle->height * $ratio))];
-        }
-
-        if ($width !== null && $height === null) {
+            $targets = [max(1, $width), max(1, (int)round($handle->height * $ratio))];
+        } elseif ($width !== null && $height === null) {
             $ratio = $width / max(1, $handle->width);
 
-            return [max(1, $width), max(1, (int)round($handle->height * $ratio))];
-        }
-
-        if ($height !== null && $width === null) {
+            $targets = [max(1, $width), max(1, (int)round($handle->height * $ratio))];
+        } elseif ($height !== null && $width === null) {
             $ratio = $height / max(1, $handle->height);
 
-            return [max(1, (int)round($handle->width * $ratio)), max(1, $height)];
+            $targets = [max(1, (int)round($handle->width * $ratio)), max(1, $height)];
+        } else {
+            $targets = [max(1, (int)$width), max(1, (int)$height)];
         }
 
-        return [max(1, (int)$width), max(1, (int)$height)];
+        return $this->limitUpscale($handle->width, $handle->height, $targets[0], $targets[1]);
     }
 
     /**

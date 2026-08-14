@@ -218,6 +218,27 @@ class Plugin extends CraftPlugin
                 Plugin::getInstance()->getAutoGenerate()->handleAfterSave($asset, $event->isNew);
             }
         );
+
+        Event::on(
+            Asset::class,
+            Asset::EVENT_BEFORE_DELETE,
+            static function (Event $event): void {
+                $asset = $event->sender;
+
+                if (!$asset instanceof Asset) {
+                    return;
+                }
+
+                $settings = Plugin::getInstance()->getSettings();
+                $cleanupPolicy = $settings->policies['cleanup'] ?? [];
+
+                if (!($cleanupPolicy['onAssetDelete'] ?? true)) {
+                    return;
+                }
+
+                Plugin::getInstance()->getCleanup()->purgeAssetDerivatives((int) $asset->id);
+            }
+        );
     }
 
     /**

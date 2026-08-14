@@ -100,6 +100,10 @@ final class ConfigurationResolver extends Component
             $storageAdapter = $settings->storage['default'] ?? 'local';
         }
 
+        $policies = is_array($settings->policies) ? $settings->policies : [];
+        $geometry = is_array($policies['geometry'] ?? null) ? $policies['geometry'] : [];
+        $safety = is_array($policies['safety'] ?? null) ? $policies['safety'] : [];
+
         $effective = new EffectiveConfig(
             driver: (string)($layer['driver'] ?? $settings->driver),
             profile: $profileName,
@@ -113,6 +117,8 @@ final class ConfigurationResolver extends Component
             storageConfig: $settings->storage,
             runtime: $settings->runtime,
             optimizersEnabled: (bool)($optimizerOptions['enabled'] ?? true),
+            allowUpscale: (bool)($geometry['allowUpscale'] ?? false),
+            maxSourcePixels: (int)($safety['maxSourcePixels'] ?? 40_000_000),
         );
 
         return $this->_cache[$cacheKey] = $effective;
@@ -297,14 +303,20 @@ final class ConfigurationResolver extends Component
      */
     private function resolveEncoderOptions(Settings $settings, string $format, ProfileDefinition $profile): array
     {
+        $encodePolicy = $settings->policies['encode'] ?? [];
+        $options = is_array($encodePolicy) ? $encodePolicy : [];
+
         $formatKey = $format === 'jpg' ? 'jpeg' : $format;
-        $options = $settings->encoders[$formatKey] ?? $settings->encoders[$format] ?? [];
+        $formatOptions = $settings->encoders[$formatKey] ?? $settings->encoders[$format] ?? [];
+        if (is_array($formatOptions)) {
+            $options = array_merge($options, $formatOptions);
+        }
 
         if (isset($profile->defaults['jpegQuality']) && in_array($format, ['jpg', 'jpeg'], true)) {
             $options['quality'] = (int)$profile->defaults['jpegQuality'];
         }
 
-        return is_array($options) ? $options : [];
+        return $options;
     }
 
     /**

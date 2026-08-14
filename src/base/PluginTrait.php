@@ -14,6 +14,7 @@ use amici\SuperImages\registries\EncoderManager;
 use amici\SuperImages\registries\OperationRegistry;
 use amici\SuperImages\registries\OptimizerManager;
 use amici\SuperImages\registries\StorageManager;
+use amici\SuperImages\services\AssetDerivativeIndex;
 use amici\SuperImages\services\AutoGenerateService;
 use amici\SuperImages\services\BinaryResolver;
 use amici\SuperImages\services\CleanupService;
@@ -53,6 +54,7 @@ use Craft;
  * @property-read BinaryResolver $binaryResolver
  * @property-read DiagnosticsService $diagnostics
  * @property-read CleanupService $cleanup
+ * @property-read AssetDerivativeIndex $assetDerivativeIndex
  * @property-read PlaygroundService $playground
  * @property-read DriverManager $driverManager
  * @property-read EncoderManager $encoderManager
@@ -84,6 +86,7 @@ trait PluginTrait
      * - `binaryResolver` — locates external optimizer binaries
      * - `diagnostics` — doctor checks and dashboard summaries
      * - `cleanup` — removes stale preview artifacts
+     * - `assetDerivativeIndex` — per-asset derivative index for cleanup
      * - `playground` — CP playground generation helper
      * - `driverManager` — image driver registry
      * - `encoderManager` — encoder registry
@@ -114,6 +117,7 @@ trait PluginTrait
             'binaryResolver' => BinaryResolver::class,
             'diagnostics' => DiagnosticsService::class,
             'cleanup' => CleanupService::class,
+            'assetDerivativeIndex' => AssetDerivativeIndex::class,
             'playground' => PlaygroundService::class,
             'driverManager' => DriverManager::class,
             'encoderManager' => EncoderManager::class,
@@ -281,6 +285,16 @@ trait PluginTrait
     public function getCleanup(): CleanupService
     {
         return $this->get('cleanup');
+    }
+
+    /**
+     * Returns the per-asset derivative index service.
+     *
+     * @return AssetDerivativeIndex
+     */
+    public function getAssetDerivativeIndex(): AssetDerivativeIndex
+    {
+        return $this->get('assetDerivativeIndex');
     }
 
     /**

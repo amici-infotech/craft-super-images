@@ -22,6 +22,59 @@ use amici\SuperImages\models\ImageHandle;
  */
 abstract class AbstractDriver implements ImageDriverInterface
 {
+    /** @var bool Whether geometry operations may enlarge beyond source dimensions. */
+    protected bool $allowUpscale = true;
+
+    /**
+     * Controls whether resize, crop, fit, fill, and scale may produce output larger than the source.
+     *
+     * @param bool $allow When false, target dimensions are clamped to source bounds.
+     *
+     * @return void
+     */
+    public function setAllowUpscale(bool $allow): void
+    {
+        $this->allowUpscale = $allow;
+    }
+
+    /**
+     * Clamps target dimensions so neither axis exceeds the source when upscaling is disallowed.
+     *
+     * Preserves the aspect ratio of the requested target pair.
+     *
+     * @param int $sourceWidth Source image width in pixels.
+     * @param int $sourceHeight Source image height in pixels.
+     * @param int $targetWidth Requested output width in pixels.
+     * @param int $targetHeight Requested output height in pixels.
+     *
+     * @return array{0: int, 1: int} Tuple of [width, height], each at least 1.
+     */
+    protected function limitUpscale(
+        int $sourceWidth,
+        int $sourceHeight,
+        int $targetWidth,
+        int $targetHeight,
+    ): array {
+        if ($this->allowUpscale) {
+            return [$targetWidth, $targetHeight];
+        }
+
+        if ($targetWidth <= $sourceWidth && $targetHeight <= $sourceHeight) {
+            return [$targetWidth, $targetHeight];
+        }
+
+        $scale = min(
+            $sourceWidth / max(1, $targetWidth),
+            $sourceHeight / max(1, $targetHeight),
+            1.0,
+        );
+
+        return [
+            max(1, (int)round($targetWidth * $scale)),
+            max(1, (int)round($targetHeight * $scale)),
+        ];
+    }
+
     /**
      * Applies an operation to an image handle when the driver and operation both support it.
      *

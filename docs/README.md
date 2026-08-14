@@ -22,14 +22,15 @@ Resolve source → Process → Encode → Optimize → Validate → Store → De
 2. [Quick start](#quick-start)
 3. [Architecture](#architecture)
 4. [Configuration](./configuration.md)
-5. [Encoders & optimizers](./encoders-optimizers.md)
-6. [Twig & frontend](./twig.md)
-7. [CLI & queue](./cli.md)
-8. [Runtime delivery](./delivery.md)
-9. [Storage](./storage.md)
-10. [Control Panel & Playground](./control-panel.md)
-11. [Cleanup & diagnostics](./diagnostics.md)
-12. [Extension API](./extension-api.md)
+5. [Policies](./policies.md)
+6. [Encoders & optimizers](./encoders-optimizers.md)
+7. [Twig & frontend](./twig.md)
+8. [CLI & queue](./cli.md)
+9. [Runtime delivery](./delivery.md)
+10. [Storage](./storage.md)
+11. [Control Panel & Playground](./control-panel.md)
+12. [Cleanup & diagnostics](./diagnostics.md)
+13. [Extension API](./extension-api.md)
 
 ---
 

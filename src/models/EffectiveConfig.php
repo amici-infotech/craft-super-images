@@ -28,6 +28,8 @@ final class EffectiveConfig
      * @param array<string, mixed> $storageConfig Resolved adapter configuration block.
      * @param array<string, mixed> $runtime Signed runtime URL settings and limits.
      * @param bool $optimizersEnabled Whether post-encode optimizers should run.
+     * @param bool $allowUpscale Whether geometry operations may enlarge beyond source dimensions.
+     * @param int $maxSourcePixels Maximum source width×height allowed after load.
      */
     public function __construct(
         public readonly string $driver,
@@ -42,6 +44,8 @@ final class EffectiveConfig
         public readonly array $storageConfig,
         public readonly array $runtime,
         public readonly bool $optimizersEnabled = true,
+        public readonly bool $allowUpscale = true,
+        public readonly int $maxSourcePixels = 40_000_000,
     ) {
     }
 }
