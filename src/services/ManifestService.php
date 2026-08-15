@@ -94,6 +94,83 @@ final class ManifestService extends Component
     }
 
     /**
+     * Count planned units for an asset without running full identity/path planning.
+     *
+     * Used by CLI progress totals so startup is O(profiles×variants×formats), not a
+     * full `plan()` pass over every derivative in the volume.
+     *
+     * @param Asset $asset The source asset element.
+     * @param array<string, mixed> $filters Optional filters: profile, variant, format, fieldHandle.
+     *
+     * @return int Number of variant×format units that would be generated.
+     */
+    public function countUnitsForAsset(Asset $asset, array $filters = []): int
+    {
+        $settings = Plugin::getInstance()->getSettings();
+        $field = $this->resolveField($filters['fieldHandle'] ?? null);
+        $profiles = $this->resolveProfiles($asset, $settings->profiles, $filters, $field);
+        $total = 0;
+
+        foreach ($profiles as $profileName) {
+            $profileConfig = $settings->profiles[$profileName] ?? null;
+            if (!is_array($profileConfig)) {
+                continue;
+            }
+
+            $profile = ProfileDefinition::fromArray($profileName, $profileConfig);
+            $variants = $this->resolveVariantNames($profile, $filters['variant'] ?? null);
+            $formats = $this->resolveFormats($profile, $filters['format'] ?? null);
+            $total += count($variants) * count($formats);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Estimate units-per-asset from volume/default profile config (no asset DB work).
+     *
+     * @param string|null $volumeHandle Optional volume handle for volume-scoped profiles.
+     * @param array<string, mixed> $filters Optional profile/variant/format filters.
+     *
+     * @return int Estimated units per asset for progress display.
+     */
+    public function estimateUnitsPerAsset(?string $volumeHandle, array $filters = []): int
+    {
+        $settings = Plugin::getInstance()->getSettings();
+        $profiles = [];
+
+        if (!empty($filters['profile']) && is_string($filters['profile'])) {
+            $profiles = [(string) $filters['profile']];
+        } elseif ($volumeHandle !== null && $volumeHandle !== '') {
+            $volumeConfig = $settings->volumes[$volumeHandle] ?? [];
+            if (!empty($volumeConfig['profile']) && is_string($volumeConfig['profile'])) {
+                $profiles = [(string) $volumeConfig['profile']];
+            } elseif (!empty($volumeConfig['profiles']) && is_array($volumeConfig['profiles'])) {
+                $profiles = array_values(array_map('strval', $volumeConfig['profiles']));
+            }
+        }
+
+        if ($profiles === []) {
+            $profiles = [$settings->defaultProfile];
+        }
+
+        $total = 0;
+        foreach ($profiles as $profileName) {
+            $profileConfig = $settings->profiles[$profileName] ?? null;
+            if (!is_array($profileConfig)) {
+                continue;
+            }
+
+            $profile = ProfileDefinition::fromArray($profileName, $profileConfig);
+            $variants = $this->resolveVariantNames($profile, $filters['variant'] ?? null);
+            $formats = $this->resolveFormats($profile, $filters['format'] ?? null);
+            $total += count($variants) * count($formats);
+        }
+
+        return max(1, $total);
+    }
+
+    /**
      * Resolve which profiles apply to an asset from filters, field, volume, or default.
      *
      * @param Asset $asset The source asset element.

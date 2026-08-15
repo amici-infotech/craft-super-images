@@ -129,6 +129,9 @@ class GenerateController extends Controller
     /**
      * Generates manifest units for matching assets synchronously or via queue.
      *
+     * Progress totals are estimated from profile × variant × format counts — we do
+     * not run a full `plan()` pass over every derivative before work starts.
+     *
      * @return int Console exit code; non-zero when any unit fails.
      */
     public function actionIndex(): int
@@ -153,8 +156,9 @@ class GenerateController extends Controller
             $query->limit($this->limit);
         }
 
-        $assets = $query->all();
-        if ($assets === []) {
+        // Fast counts only — no element hydration and no plan() yet.
+        $totalAssets = (int) (clone $query)->count();
+        if ($totalAssets === 0) {
             $this->stdout("No matching assets found.\n");
 
             return ExitCode::OK;
@@ -170,33 +174,17 @@ class GenerateController extends Controller
         $manifest = $plugin->getManifest();
         $generation = $plugin->getGeneration();
 
-        // Build the full unit plan up front so progress totals ([n/total]) are known
-        // before any work starts, instead of discovering asset/unit counts as we go.
-        $unitsByAsset = [];
-        $totalUnits = 0;
-        foreach ($assets as $asset) {
-            $units = $manifest->buildForAsset($asset, $filters);
-            if ($units === []) {
-                continue;
-            }
+        $unitsPerAsset = $manifest->estimateUnitsPerAsset($this->volume, $filters);
+        $estimatedUnits = $totalAssets * $unitsPerAsset;
 
-            $unitsByAsset[] = [$asset, $units];
-            $totalUnits += count($units);
-        }
-
-        if ($unitsByAsset === []) {
-            $this->stdout("No generation units matched the given filters.\n");
-
-            return ExitCode::OK;
-        }
-
-        $totalAssets = count($unitsByAsset);
         $this->stdout(sprintf(
-            "Planned %d unit%s across %d asset%s.\n\n",
-            $totalUnits,
-            $totalUnits === 1 ? '' : 's',
+            "Generating ~%d unit%s across %d asset%s (%d unit%s/asset estimated).\n\n",
+            $estimatedUnits,
+            $estimatedUnits === 1 ? '' : 's',
             $totalAssets,
             $totalAssets === 1 ? '' : 's',
+            $unitsPerAsset,
+            $unitsPerAsset === 1 ? '' : 's',
         ), Console::FG_CYAN);
 
         $generated = 0;
@@ -204,58 +192,101 @@ class GenerateController extends Controller
         $failed = 0;
         $enqueued = 0;
         $unitIndex = 0;
+        $actualUnits = 0;
+        $assetPosition = 0;
         $startedAt = microtime(true);
 
-        foreach ($unitsByAsset as $assetPosition => [$asset, $units]) {
-            $this->stdout(sprintf(
-                "[asset %d/%d] #%d %s (%d unit%s)\n",
-                $assetPosition + 1,
-                $totalAssets,
-                $asset->id,
-                $asset->getFilename(),
-                count($units),
-                count($units) === 1 ? '' : 's',
-            ), Console::FG_CYAN);
+        // Batch hydrate assets so we never hold 2k+ elements in memory at once.
+        foreach ($query->batch(50) as $assets) {
+            foreach ($assets as $asset) {
+                if (!$asset instanceof Asset) {
+                    continue;
+                }
 
-            if ($this->queue && !$this->dryRun) {
-                Craft::$app->getQueue()->push(new GenerateAssetJob([
-                    'assetId' => (int) $asset->id,
-                    'profile' => $this->profile,
-                    'variant' => $this->variant,
-                    'format' => $this->format,
-                    'force' => $this->force,
-                ]));
-                $enqueued++;
-                $unitIndex += count($units);
-                $this->stdout(sprintf("  [%d/%d] queued GenerateAssetJob\n", $unitIndex, $totalUnits));
+                $assetPosition++;
 
-                continue;
-            }
-
-            foreach ($units as $unit) {
-                $unitIndex++;
-                $label = sprintf('%s/%s.%s', $unit->profile, $unit->variant, $unit->format);
-                $progress = sprintf('[%d/%d]', $unitIndex, $totalUnits);
-
-                if ($this->dryRun) {
-                    $this->stdout(sprintf("  %s [dry-run] %s → %s\n", $progress, $label, $unit->publicUrl));
+                if ($this->queue && !$this->dryRun) {
+                    Craft::$app->getQueue()->push(new GenerateAssetJob([
+                        'assetId' => (int) $asset->id,
+                        'profile' => $this->profile,
+                        'variant' => $this->variant,
+                        'format' => $this->format,
+                        'force' => $this->force,
+                    ]));
+                    $enqueued++;
+                    $unitIndex += $unitsPerAsset;
+                    $actualUnits += $unitsPerAsset;
+                    $this->stdout(sprintf(
+                        "[asset %d/%d] #%d %s — queued (~%d units)\n",
+                        $assetPosition,
+                        $totalAssets,
+                        $asset->id,
+                        $asset->getFilename(),
+                        $unitsPerAsset,
+                    ), Console::FG_CYAN);
 
                     continue;
                 }
 
-                try {
-                    $result = $generation->generate($unit->toGenerationRequest(), $this->force);
+                $units = $manifest->buildForAsset($asset, $filters);
+                if ($units === []) {
+                    continue;
+                }
+
+                $actualUnits += count($units);
+
+                $this->stdout(sprintf(
+                    "[asset %d/%d] #%d %s (%d unit%s)\n",
+                    $assetPosition,
+                    $totalAssets,
+                    $asset->id,
+                    $asset->getFilename(),
+                    count($units),
+                    count($units) === 1 ? '' : 's',
+                ), Console::FG_CYAN);
+
+                if ($this->dryRun) {
+                    foreach ($units as $unit) {
+                        $unitIndex++;
+                        $label = sprintf('%s/%s.%s', $unit->profile, $unit->variant, $unit->format);
+                        $this->stdout(sprintf(
+                            "  [%d/~%d] [dry-run] %s → %s\n",
+                            $unitIndex,
+                            $estimatedUnits,
+                            $label,
+                            $unit->publicUrl,
+                        ));
+                    }
+
+                    continue;
+                }
+
+                $results = $generation->generateUnits($units, $this->force);
+
+                foreach ($units as $i => $unit) {
+                    $unitIndex++;
+                    $label = sprintf('%s/%s.%s', $unit->profile, $unit->variant, $unit->format);
+                    $progress = sprintf('[%d/~%d]', $unitIndex, $estimatedUnits);
+                    $result = $results[$i] ?? null;
+
+                    if ($result === null) {
+                        $failed++;
+                        $this->stderr(sprintf("  %s [failed] %s — missing result\n", $progress, $label), Console::FG_RED);
+
+                        continue;
+                    }
 
                     if (($result->diagnostics['skipped'] ?? false) === true) {
                         $skipped++;
                         $this->stdout(sprintf("  %s [skipped] %s\n", $progress, $label));
+                    } elseif (($result->diagnostics['failed'] ?? false) === true || !$result->success) {
+                        $failed++;
+                        $error = (string) ($result->diagnostics['error'] ?? 'unknown error');
+                        $this->stderr(sprintf("  %s [failed] %s — %s\n", $progress, $label, $error), Console::FG_RED);
                     } else {
                         $generated++;
                         $this->stdout(sprintf("  %s [generated] %s → %s\n", $progress, $label, $result->url), Console::FG_GREEN);
                     }
-                } catch (\Throwable $exception) {
-                    $failed++;
-                    $this->stderr(sprintf("  %s [failed] %s — %s\n", $progress, $label, $exception->getMessage()), Console::FG_RED);
                 }
             }
         }
@@ -263,14 +294,15 @@ class GenerateController extends Controller
         $elapsed = microtime(true) - $startedAt;
 
         if ($this->dryRun) {
-            $this->stdout("\nDry-run complete.\n");
+            $this->stdout(sprintf("\nDry-run complete (%d unit%s planned).\n", $actualUnits, $actualUnits === 1 ? '' : 's'));
         } else {
             $this->stdout(sprintf(
-                "\nSummary: generated=%d skipped=%d failed=%d queued=%d (%.1fs)\n",
+                "\nSummary: generated=%d skipped=%d failed=%d queued=%d units=%d (%.1fs)\n",
                 $generated,
                 $skipped,
                 $failed,
                 $enqueued,
+                $actualUnits,
                 $elapsed,
             ));
         }

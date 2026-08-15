@@ -52,24 +52,30 @@ Never under webroot.
 
 ## Path shape
 
-Paths are deliberately flat — two short shard directories (4 hex chars from the
-identity, up to 65,536 buckets) hold the derivative file directly. There is no
-per-derivative directory, so a volume with hundreds of thousands of derivatives
-still keeps directory listings small and shallow:
+Derivatives use an Imager-X-style layout so related files stay grouped and
+filenames stay readable:
 
 ```text
-{optional-namespace}/{shard1}/{shard2}/{identity}--{profile}-{variant}.{ext}
+{folderHash}/{assetId}/{basename}-{variant}.{ext}
 ```
 
-Profile and variant are embedded in the filename for readability only — they
-are not required for uniqueness, since the identity hash already encodes
-profile, variant, format, and every operation/encoder option.
+- `folderHash` — `md5('/' . folderPath)` (same idea as Imager-X `hashPath`)
+- `assetId` — Craft asset element ID
+- `basename-variant.ext` — original filename stem + variant handle + format
 
 Examples:
 
 ```text
-68/fc/68fcc0e1…--responsive-sm.jpg
-preview/20260814/01/f9/01f900ab…--responsive-md.webp
+41762720c56668e667b056cfce41e4c6/184704/hero-md.webp
+41762720c56668e667b056cfce41e4c6/184704/hero-lg.jpg
+preview/20260814/41762720c56668e667b056cfce41e4c6/184704/hero-sm.webp
+```
+
+Non-asset sources (local path / remote URL) use a short identity shard instead of
+`folderHash/assetId`:
+
+```text
+{identity[0:2]}/{identity[2:4]}/{basename}-{variant}.{ext}
 ```
 
 Playground uses the `preview/Ymd/` namespace so experiments do not collide with production derivatives.

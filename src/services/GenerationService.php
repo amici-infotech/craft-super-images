@@ -19,6 +19,9 @@ use amici\SuperImages\models\GenerationDefinition;
 use amici\SuperImages\models\GenerationRequest;
 use amici\SuperImages\models\GenerationResult;
 use amici\SuperImages\models\ImageHandle;
+use amici\SuperImages\models\ManifestUnit;
+use amici\SuperImages\models\OperationDefinition;
+use amici\SuperImages\models\SourceImage;
 use amici\SuperImages\models\StorageWriteOptions;
 use amici\SuperImages\Plugin;
 use yii\base\Component;
@@ -88,12 +91,16 @@ class GenerationService extends Component
         );
 
         $identity = $plugin->getGenerationIdentity()->calculate($definition, $driver->name());
+        $pathMeta = $this->resolvePathMeta($request, $plugin);
         $storagePath = $plugin->getStoragePathBuilder()->build(
             $identity,
             $definition->format,
             $definition->profile,
             $definition->variant,
             $this->previewNamespace($request),
+            $pathMeta['assetId'],
+            $pathMeta['basename'],
+            $pathMeta['folderHash'],
         );
 
         $adapter = $plugin->getStorageManager()->select($definition->storageAdapter);
@@ -106,6 +113,110 @@ class GenerationService extends Component
             'driverName' => $driver->name(),
             'storageUrl' => $adapter->url($storagePath),
         ];
+    }
+
+    /**
+     * Generate many planned units, reusing one resolved source per asset.
+     *
+     * Fast path for CLI/queue bulk generation: one source resolve, deferred temp
+     * cleanup, and a single derivative-index write per asset.
+     *
+     * @param list<ManifestUnit> $units Planned generation units (typically one asset).
+     * @param bool $force When true, regenerate even if derivatives already exist.
+     *
+     * @return list<GenerationResult> Results in the same order as `$units`.
+     */
+    public function generateUnits(array $units, bool $force = false): array
+    {
+        if ($units === []) {
+            return [];
+        }
+
+        $plugin = Plugin::getInstance();
+        $results = [];
+        $indexWrites = [];
+
+        $groups = [];
+        foreach ($units as $index => $unit) {
+            $key = $unit->assetId !== null
+                ? 'asset:' . $unit->assetId
+                : ($unit->localPath !== null ? 'local:' . $unit->localPath : 'remote:' . ($unit->remoteUrl ?? ''));
+            $groups[$key][] = [$index, $unit];
+        }
+
+        try {
+            foreach ($groups as $group) {
+                $assetIdForCache = null;
+
+                try {
+                    foreach ($group as [$index, $unit]) {
+                        $request = $unit->toGenerationRequest();
+                        $assetIdForCache = $request->assetId ?? $assetIdForCache;
+
+                        try {
+                            // SourceResolver caches the resolved file for this asset until
+                            // clearSourceCache() — no per-unit getCopyOfFile().
+                            $result = $this->generateInternal(
+                                $request,
+                                $force,
+                                cleanup: false,
+                                recordIndex: false,
+                                sharedSource: null,
+                            );
+                        } catch (\Throwable $exception) {
+                            $results[$index] = new GenerationResult(
+                                success: false,
+                                identity: $unit->identity,
+                                storagePath: $unit->storagePath,
+                                url: $unit->publicUrl,
+                                format: $unit->format,
+                                width: 0,
+                                height: 0,
+                                size: 0,
+                                mime: '',
+                                durationMs: 0,
+                                diagnostics: [
+                                    'failed' => true,
+                                    'error' => $exception->getMessage(),
+                                    'profile' => $unit->profile,
+                                    'variant' => $unit->variant,
+                                ],
+                            );
+
+                            continue;
+                        }
+
+                        if (
+                            ($result->diagnostics['skipped'] ?? false) !== true
+                            && $request->assetId !== null
+                            && !$request->preview
+                        ) {
+                            $indexWrites[$request->assetId][] = [
+                                'identity' => $result->identity,
+                                'storagePath' => $result->storagePath,
+                                'adapter' => (string) ($result->diagnostics['adapter'] ?? 'local'),
+                            ];
+                        }
+
+                        $results[$index] = $result;
+                    }
+                } finally {
+                    if ($assetIdForCache !== null) {
+                        $plugin->getSourceResolver()->clearSourceCache($assetIdForCache);
+                    }
+                }
+            }
+
+            foreach ($indexWrites as $assetId => $entries) {
+                $plugin->getAssetDerivativeIndex()->recordMany((int) $assetId, $entries);
+            }
+        } finally {
+            $plugin->getTemporaryFiles()->cleanup();
+        }
+
+        ksort($results);
+
+        return array_values($results);
     }
 
     /**
@@ -125,6 +236,27 @@ class GenerationService extends Component
      */
     public function generate(GenerationRequest $request, bool $force = false): GenerationResult
     {
+        return $this->generateInternal($request, $force, cleanup: true, recordIndex: true, sharedSource: null);
+    }
+
+    /**
+     * Core generate implementation shared by single and batch entry points.
+     *
+     * @param GenerationRequest $request The generation request.
+     * @param bool $force When true, regenerate even if output exists.
+     * @param bool $cleanup When true, destroy handles and clean temp files before returning.
+     * @param bool $recordIndex When true, write the asset derivative index immediately.
+     * @param SourceImage|null $sharedSource Optional already-resolved source for batch reuse.
+     *
+     * @return GenerationResult The generation outcome.
+     */
+    private function generateInternal(
+        GenerationRequest $request,
+        bool $force,
+        bool $cleanup,
+        bool $recordIndex,
+        ?SourceImage $sharedSource,
+    ): GenerationResult {
         $plugin = Plugin::getInstance();
         $started = microtime(true);
         $handle = null;
@@ -141,12 +273,11 @@ class GenerationService extends Component
             $config = $planned['config'];
             $storageUrl = $planned['storageUrl'];
 
-            $beforeEvent = new GenerationEvent([
+            $this->trigger(self::EVENT_BEFORE_GENERATE, new GenerationEvent([
                 'request' => $request,
                 'definition' => $definition,
                 'identity' => $identity,
-            ]);
-            $this->trigger(self::EVENT_BEFORE_GENERATE, $beforeEvent);
+            ]));
 
             if (!$force) {
                 $adapter = $plugin->getStorageManager()->select($definition->storageAdapter);
@@ -171,6 +302,7 @@ class GenerationService extends Component
                             'profile' => $definition->profile,
                             'variant' => $definition->variant,
                             'preview' => $request->preview,
+                            'adapter' => $adapter->name(),
                         ],
                     );
 
@@ -185,18 +317,24 @@ class GenerationService extends Component
                 }
             }
 
-            $source = $plugin->getSourceResolver()->resolve($request);
+            $source = $sharedSource ?? $plugin->getSourceResolver()->resolve($request);
             $driver = $plugin->getDriverManager()->select($definition->driverPreference);
-
             $handle = $driver->load($source);
 
             $sourcePixels = $handle->width * $handle->height;
-            if ($sourcePixels > $config->maxSourcePixels) {
-                throw new ProcessingException(sprintf(
-                    'Source image exceeds maximum allowed pixels (%d > %d).',
-                    $sourcePixels,
-                    $config->maxSourcePixels,
-                ));
+            if ($sourcePixels > $config->maxSourcePixels && $config->maxSourcePixels > 0) {
+                // Soft-cap: downscale huge sources to the safety budget instead of aborting.
+                // (runtime.maxPixels is unrelated — that only gates signed lazy-generate URLs.)
+                $scale = sqrt($config->maxSourcePixels / $sourcePixels);
+                $maxWidth = max(1, (int) floor($handle->width * $scale));
+                $maxHeight = max(1, (int) floor($handle->height * $scale));
+
+                $handle = $plugin->getOperationPipeline()->apply($handle, $driver, [
+                    new OperationDefinition('fit', [
+                        'width' => $maxWidth,
+                        'height' => $maxHeight,
+                    ]),
+                ]);
             }
 
             if ($driver instanceof AbstractDriver) {
@@ -262,7 +400,7 @@ class GenerationService extends Component
                 $plugin->getExistenceMarkers()->write($identity, $markerMetadata);
             }
 
-            if (!$request->preview && $request->assetId !== null) {
+            if ($recordIndex && !$request->preview && $request->assetId !== null) {
                 $plugin->getAssetDerivativeIndex()->record(
                     $request->assetId,
                     $identity,
@@ -288,6 +426,7 @@ class GenerationService extends Component
                     'variant' => $definition->variant,
                     'preview' => $request->preview,
                     'optimizer' => $optimizer->name(),
+                    'adapter' => $adapter->name(),
                 ],
             );
 
@@ -304,15 +443,72 @@ class GenerationService extends Component
                 $driver->destroy($handle);
             }
 
-            $plugin->getTemporaryFiles()->cleanup();
+            if ($cleanup) {
+                $plugin->getTemporaryFiles()->cleanup();
+                if ($request->assetId !== null) {
+                    $plugin->getSourceResolver()->clearSourceCache($request->assetId);
+                }
+            }
         }
     }
 
     /**
-     * Build the storage namespace segment for preview generations.
+     * Resolve basename / folder-hash path segments for storage layout.
      *
-     * Preview derivatives are stored under `preview/{YYYYMMDD}/` so they can be
-     * cleaned up independently of production output.
+     * Uses lightweight asset metadata only — never copies or downloads the file.
+     *
+     * @param GenerationRequest $request The generation request.
+     * @param Plugin $plugin Plugin instance.
+     *
+     * @return array{assetId: int|null, basename: string|null, folderHash: string|null}
+     */
+    private function resolvePathMeta(GenerationRequest $request, Plugin $plugin): array
+    {
+        if ($request->assetId !== null) {
+            try {
+                $meta = $plugin->getSourceResolver()->assetPathMeta($request->assetId);
+
+                return [
+                    'assetId' => $request->assetId,
+                    'basename' => $meta['basename'],
+                    'folderHash' => $meta['folderHash'],
+                ];
+            } catch (\Throwable) {
+                return [
+                    'assetId' => $request->assetId,
+                    'basename' => null,
+                    'folderHash' => null,
+                ];
+            }
+        }
+
+        if ($request->localPath !== null) {
+            return [
+                'assetId' => null,
+                'basename' => pathinfo($request->localPath, PATHINFO_FILENAME) ?: null,
+                'folderHash' => null,
+            ];
+        }
+
+        if ($request->remoteUrl !== null) {
+            $path = parse_url($request->remoteUrl, PHP_URL_PATH);
+
+            return [
+                'assetId' => null,
+                'basename' => is_string($path) ? (pathinfo($path, PATHINFO_FILENAME) ?: null) : null,
+                'folderHash' => null,
+            ];
+        }
+
+        return [
+            'assetId' => null,
+            'basename' => null,
+            'folderHash' => null,
+        ];
+    }
+
+    /**
+     * Build the storage namespace segment for preview generations.
      *
      * @param GenerationRequest $request The generation request; preview flag controls namespace.
      *

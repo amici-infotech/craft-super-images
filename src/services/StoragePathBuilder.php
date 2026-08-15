@@ -13,28 +13,34 @@ use yii\base\Component;
 /**
  * Storage Path Builder
  *
- * Constructs sharded, deterministic storage paths from generation identity,
- * profile, variant, format, and optional namespace (e.g. preview dates).
+ * Constructs readable, Imager-X-style storage paths:
  *
- * Layout is deliberately flat: two short shard directories (4 hex chars total,
- * up to 65,536 buckets) hold the derivative file directly — there is no
- * per-derivative directory. Profile and variant are embedded in the filename
- * for readability; they are not needed for uniqueness since the identity hash
- * already encodes profile, variant, format, and every operation/encoder option.
+ *     {folderHash}/{assetId}/{basename}-{variant}.{ext}
+ *
+ * Example:
+ *
+ *     41762720c56668e667b056cfce41e4c6/184704/hero-md.webp
+ *
+ * Non-asset sources fall back to `{identityPrefix}/{basename}-{variant}.{ext}`.
+ * Preview generations are prefixed with `preview/{YYYYMMDD}/`.
  */
 final class StoragePathBuilder extends Component
 {
     /**
      * Build a deterministic storage-relative path.
      *
-     * Default layout: `{shard1}/{shard2}/{identity}--{profile}-{variant}.ext`
-     * With namespace (e.g. `preview/20260814`): `{namespace}/{shard1}/{shard2}/{identity}--{profile}-{variant}.ext`
+     * Asset layout: `{folderHash}/{assetId}/{basename}-{variant}.{ext}`
+     * Other sources: `{identity[0:2]}/{identity[2:4]}/{basename}-{variant}.{ext}`
+     * With namespace: `{namespace}/…` (e.g. `preview/20260814/…`)
      *
-     * @param string $identity The SHA-256 generation identity hash.
+     * @param string $identity The SHA-256 generation identity hash (used for non-asset sharding / fallback names).
      * @param string $format The output format (jpeg is stored as .jpg).
-     * @param string|null $profile Optional profile segment embedded in the filename.
-     * @param string|null $variant Optional variant segment embedded in the filename.
+     * @param string|null $profile Optional profile handle (unused in path; kept for API stability).
+     * @param string|null $variant Optional variant handle embedded in the filename.
      * @param string|null $namespace Optional namespace prefix (preview paths, etc.).
+     * @param int|null $assetId Craft asset ID — when set, becomes the second path segment.
+     * @param string|null $basename Original filename without extension (e.g. `hero`).
+     * @param string|null $folderHash md5 hash of the asset folder path (first path segment).
      *
      * @return string Storage-relative path including file extension.
      */
@@ -44,12 +50,14 @@ final class StoragePathBuilder extends Component
         ?string $profile = null,
         ?string $variant = null,
         ?string $namespace = null,
+        ?int $assetId = null,
+        ?string $basename = null,
+        ?string $folderHash = null,
     ): string {
+        unset($profile); // Reserved for future path patterns; identity already encodes profile.
+
         $format = strtolower($format);
         $extension = $format === 'jpeg' ? 'jpg' : $format;
-
-        $shard1 = substr($identity, 0, 2);
-        $shard2 = substr($identity, 2, 2);
 
         $segments = [];
 
@@ -60,14 +68,108 @@ final class StoragePathBuilder extends Component
             }
         }
 
-        $segments[] = $shard1;
-        $segments[] = $shard2;
+        $safeBasename = $this->sanitizeBasename($basename, $identity);
+        $safeVariant = $this->sanitizeSegment($variant);
 
-        $suffixParts = array_filter([$profile, $variant], static fn(?string $part): bool => $part !== null && $part !== '');
-        $filename = $suffixParts !== []
-            ? $identity . '--' . implode('-', $suffixParts)
-            : $identity;
+        if ($assetId !== null && $assetId > 0) {
+            $hash = $folderHash !== null && $folderHash !== ''
+                ? $this->sanitizeSegment($folderHash)
+                : substr($identity, 0, 32);
+            $segments[] = $hash;
+            $segments[] = (string) $assetId;
+        } else {
+            $segments[] = substr($identity, 0, 2);
+            $segments[] = substr($identity, 2, 2);
+        }
+
+        $filename = $safeVariant !== ''
+            ? $safeBasename . '-' . $safeVariant
+            : $safeBasename;
 
         return implode('/', $segments) . '/' . $filename . '.' . $extension;
+    }
+
+    /**
+     * Build an Imager-style folder hash from a volume folder path.
+     *
+     * Mirrors Imager-X `hashPath` behaviour: `md5('/' . folderPath)`.
+     *
+     * @param string $folderPath Asset folder path relative to the volume (may be empty).
+     * @param string|null $volumeHandle Optional volume handle when volume should be part of the hash.
+     * @param bool $includeVolume When true, prefixes the hash input with the volume handle.
+     *
+     * @return string 32-character md5 hex digest.
+     */
+    public function folderHash(string $folderPath, ?string $volumeHandle = null, bool $includeVolume = false): string
+    {
+        $folderPath = trim(str_replace('\\', '/', $folderPath), '/');
+        $input = '/';
+
+        if ($includeVolume && $volumeHandle !== null && $volumeHandle !== '') {
+            $input .= mb_strtolower($volumeHandle) . '/';
+        }
+
+        if ($folderPath !== '') {
+            $input .= $folderPath . '/';
+        }
+
+        return md5($input);
+    }
+
+    /**
+     * Sanitize a basename for use in storage filenames.
+     *
+     * @param string|null $basename Preferred basename from the source file.
+     * @param string $identity Fallback identity used when basename is empty.
+     *
+     * @return string Safe basename segment.
+     */
+    private function sanitizeBasename(?string $basename, string $identity): string
+    {
+        $basename = $this->sanitizeSegment($basename);
+
+        if ($basename === '') {
+            return substr($identity, 0, 12);
+        }
+
+        return $basename;
+    }
+
+    /**
+     * Strip characters that are unsafe in storage path segments.
+     *
+     * Preserves Unicode letters and numbers (Hebrew, Cyrillic, CJK, …) so original
+     * asset basenames survive. Only removes path separators, control characters,
+     and a small set of filesystem-reserved symbols.
+     *
+     * @param string|null $value Raw segment value.
+     *
+     * @return string Sanitized segment, or empty string when null/blank.
+     */
+    private function sanitizeSegment(?string $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        // Normalize separators first so they never become directory breaks.
+        $value = str_replace(['\\', '/'], '-', $value);
+
+        // Drop C0/C1 controls and DEL.
+        $value = preg_replace('/[\x00-\x1F\x7F]/u', '', $value) ?? '';
+
+        // Filesystem-reserved / URL-awkward symbols → hyphen. Keep letters from
+        // every script (\p{L}), marks (\p{M}), numbers (\p{N}), and . _ -
+        $value = preg_replace(
+            '/[^\p{L}\p{M}\p{N}._-]+/u',
+            '-',
+            $value,
+        ) ?? '';
+
+        // Collapse repeated hyphens produced by replacements.
+        $value = preg_replace('/-+/', '-', $value) ?? '';
+        $value = trim($value, '.-');
+
+        return $value;
     }
 }

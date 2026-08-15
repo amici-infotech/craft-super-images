@@ -92,23 +92,26 @@ php craft super-images/generate --volume=images --profile=responsive --variant=l
 | `--force` | `-f` | bool | `false` | Regenerate and overwrite even when a derivative already exists at its storage path. |
 | `--limit` | | int | `0` | Cap the number of matching **assets** processed (`0` = no limit). Applied before unit expansion, so it limits assets, not units. |
 
-Console output shows a plan summary, then progresses per asset and per unit with
-a running counter, e.g.:
+Console output estimates totals from profile × variant × format counts (no full
+`plan()` pass over the volume), then progresses per asset and per unit:
 
 ```text
-Planned 520 units across 87 assets.
+Generating ~520 units across 87 assets (6 units/asset estimated).
 
 [asset 1/87] #101 hero.jpg (6 units)
-  [1/520] [generated] responsive/sm.jpg → /uploads/super-images/68/fc/68fcc0…--responsive-sm.jpg
-  [2/520] [skipped] responsive/sm.webp
+  [1/~520] [generated] responsive/sm.webp → /transforms/super-images/417627…/101/hero-sm.webp
+  [2/~520] [skipped] responsive/sm.jpg
   ...
 
-Summary: generated=430 skipped=88 failed=2 queued=0 (41.3s)
+Summary: generated=430 skipped=88 failed=2 queued=0 units=520 (41.3s)
 ```
 
 `[skipped]` means the derivative already exists and `--force` wasn't set.
 `[failed]` prints the exception message and makes the command exit non-zero
 (`ExitCode::UNSPECIFIED_ERROR`) so it's easy to catch in CI/cron.
+
+Assets are processed in batches of 50. Each asset resolves its source file once
+and writes all variants before moving on.
 
 ---
 
@@ -140,77 +143,60 @@ php craft super-images/doctor --json=1 || exit 1
 
 ## Cleanup
 
-Deletes derivative files. **Always dry-runs by default** — nothing is deleted
-unless you pass both `--dry-run=0` and `--force=1`. Pick a mode with `--asset`,
-`--orphaned`, or `--all`; with none of those, it defaults to Playground preview
-cleanup only.
+Deletes derivative files under the default **local** storage adapter.
 
-Generated (non-preview) derivatives are protected by `cleanup.generatedRetentionDays`
-in config (**default: 365 days** — see [Cache & retention](#cache--retention)
-below), so `--orphaned` and `--all` never touch anything younger than a year
-unless you explicitly lower that via config or `--retention-days`.
+**Runs for real by default.** Pass `--dry-run=1` to preview without deleting.
+
+| Mode | How | Retention |
+|---|---|---|
+| **Aged** (default) | Every transform older than retention | `cleanup.generatedRetentionDays` (default 365), overridable with `--retention-days` |
+| **All** | `--all=1` | None — deletes everything immediately |
+| **Asset** | `--asset=ID` | N/A — deletes that asset’s indexed derivatives |
+| **Orphaned** | `--orphaned=1` | Same as aged, via index `updatedAt` |
 
 ```bash
-# Default mode: preview-only. See what Playground previews older than
-# cleanup.previewRetentionDays (default 2 days) would be deleted.
+# Delete aged transforms (older than generatedRetentionDays).
 php craft super-images/cleanup
 
-# Actually delete them.
-php craft super-images/cleanup --dry-run=0 --force=1
+# Preview only — list what would be deleted.
+php craft super-images/cleanup --dry-run=1
 
-# Override the preview retention window for this run only (7 days instead of config default).
-php craft super-images/cleanup --retention-days=7 --dry-run=0 --force=1
+# Temporary retention for this run only (e.g. older than 7 days).
+php craft super-images/cleanup --retention-days=7
 
-# Purge every derivative for one asset (e.g. before manually re-uploading a
-# replacement file outside of Craft's normal replace flow).
-php craft super-images/cleanup --asset=123 --dry-run=0 --force=1
+# Nuclear: delete every derivative now, ignore retention, clear the asset index.
+php craft super-images/cleanup --all=1
 
-# Purge derivatives whose Craft asset was hard-deleted and therefore never
-# fired Super Images' normal asset-delete cleanup hook. Respects the 1-year
-# generatedRetentionDays safety net by default.
+# One asset’s indexed derivatives.
+php craft super-images/cleanup --asset=123
+
+# Indexed derivatives whose Craft asset no longer exists.
 php craft super-images/cleanup --orphaned=1
-php craft super-images/cleanup --orphaned=1 --dry-run=0 --force=1
-
-# Same, but ignore the retention safety net entirely for this run (retentionDays=0).
-php craft super-images/cleanup --orphaned=1 --retention-days=0 --dry-run=0 --force=1
-
-# Nuclear option: wipe every generated derivative (not previews) so the next
-# `generate` run rebuilds everything from scratch — typically run once right
-# after a profile/geometry/encoder config change makes old output obsolete.
-php craft super-images/cleanup --all=1 --dry-run=0 --force=1
 ```
 
 | Option | Alias | Type | Default | Meaning |
 |---|---|---|---|---|
-| `--dry-run` | `-d` | bool | `true` | Report candidates without deleting. Set `0` (with `--force=1`) to actually delete. |
-| `--force` | `-f` | bool | `false` | Required alongside `--dry-run=0` to confirm deletion. Deletion is refused (exit `DATAERR`) otherwise. |
-| `--asset` | `-a` | int\|null | `null` | Purge all indexed derivatives for one Craft asset ID via {@see AssetDerivativeIndex}, then clear its index. |
-| `--orphaned` | | bool | `false` | Purge derivatives for indexed assets that no longer exist in Craft (hard-deleted). Subject to `cleanup.generatedRetentionDays`. |
-| `--all` | | bool | `false` | Purge every generated derivative under the default local storage adapter, excluding `preview/`. Subject to `cleanup.generatedRetentionDays`. Local adapters only. |
-| `--previews-only` | | int | `1` | Legacy no-op kept for backwards compatibility — preview cleanup is already the default mode when no other mode flag is set. |
-| `--retention-days` | | int\|null | `null` | Overrides `cleanup.previewRetentionDays` (default mode) or `cleanup.generatedRetentionDays` (`--orphaned`/`--all`) for this run only. |
+| `--dry-run` | `-d` | bool | `false` | List matches without deleting. |
+| `--asset` | `-a` | int\|null | `null` | Purge all indexed derivatives for one Craft asset ID. |
+| `--orphaned` | | bool | `false` | Purge derivatives for indexed assets that no longer exist in Craft. Subject to retention. |
+| `--all` | | bool | `false` | Delete every file under local storage immediately (no retention check) and clear the asset index. |
+| `--retention-days` | | int\|null | `null` | Temporary override of `cleanup.generatedRetentionDays` for aged / orphaned modes. Ignored when `--all=1`. |
 
-Mode precedence when multiple mode flags are passed at once: `--asset` › `--orphaned` › `--all` › preview cleanup (default).
+Mode precedence: `--asset` › `--orphaned` › `--all` › aged (default).
 
-Output is a JSON report, e.g.:
+Output matches the generate CLI style:
 
-```json
-{
-    "dryRun": false,
-    "retentionDays": 365,
-    "cutoff": 1723497600,
-    "assetsScanned": 412,
-    "assetsOrphaned": 3,
-    "assetsSkippedFresh": 0,
-    "candidates": 18,
-    "deleted": 18,
-    "errors": 0,
-    "paths": [...],
-    "pathsTruncated": false
-}
+```text
+Cleaning aged transforms (retention: 30 days)…
+
+  [1/18] [deleted] 417627…/101/hero-sm.webp
+  [2/18] [deleted] 417627…/101/hero-md.webp
+  ...
+
+Summary: deleted=18 kept=412 failed=0 (1.2s)
 ```
 
-Non-zero `errors` sets the exit code to `ExitCode::UNSPECIFIED_ERROR`, so cron
+Non-zero `failed` sets the exit code to `ExitCode::UNSPECIFIED_ERROR`, so cron
 jobs can alert on partial failures.
 
 ---
@@ -223,11 +209,10 @@ control this:
 
 ```php
 'cleanup' => [
-    // Playground preview artifacts (short-lived, disposable experiments).
+    // Playground preview artifacts (used by preview-only helpers).
     'previewRetentionDays' => 2,
-    // Real generated derivatives — protected from `--orphaned`/`--all` cleanup
-    // until they're at least this old. Defaults to a full year; raise or
-    // lower to match your storage budget.
+    // Default / orphaned CLI sweeps only delete files older than this many days.
+    // Override per run with --retention-days. Use --all=1 to ignore entirely.
     'generatedRetentionDays' => 365,
     'allowRemoteScan' => false,
 ],
@@ -236,9 +221,8 @@ control this:
 `generatedRetentionDays` does **not** block the immediate, automatic cleanup
 that runs when a Craft Asset is actually deleted or its file replaced (see
 [`policies.cleanup`](policies.md) — those always fire right away since the
-source itself is gone or has changed). It only guards the bulk `--orphaned`
-and `--all` console sweeps against deleting derivatives that are simply
-"unused for now" but still well within your caching window.
+source itself is gone or has changed). It only guards the default aged and
+`--orphaned` console sweeps. `--all=1` bypasses it.
 
 ---
 

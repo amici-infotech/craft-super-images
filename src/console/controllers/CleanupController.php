@@ -1,6 +1,6 @@
 <?php
 /**
- * Console cleanup command for Super Images preview and generated derivatives.
+ * Console cleanup command for Super Images derivatives.
  *
  * @link      https://amiciinfotech.com
  * @copyright Copyright (c) 2026 Amici Infotech
@@ -12,47 +12,28 @@ use amici\SuperImages\Plugin;
 use yii\console\Controller;
 use yii\console\ExitCode;
 use yii\helpers\Console;
-use yii\helpers\Json;
 
 /**
- * Cleans up Super Images derivatives: stale Playground previews (default),
- * a single asset's derivatives, orphaned derivatives whose Craft asset no
- * longer exists, or every generated derivative.
+ * Cleans up Super Images derivatives.
  *
- * Always dry-runs first. Deleting requires both `--dry-run=0` and `--force=1`.
+ * Default: delete every transform older than retention
+ * (`cleanup.generatedRetentionDays`). Runs for real unless `--dry-run=1`.
  *
- *     # Preview cleanup (default mode) — safe, short retention (2 days).
  *     php craft super-images/cleanup
- *     php craft super-images/cleanup --dry-run=0 --force=1
- *     php craft super-images/cleanup --retention-days=7 --dry-run=0 --force=1
- *
- *     # One asset's derivatives (e.g. before a manual re-upload).
- *     php craft super-images/cleanup --asset=123 --dry-run=0 --force=1
- *
- *     # Derivatives whose Craft asset was hard-deleted (bypassing Craft's
- *     # delete hook). Respects cleanup.generatedRetentionDays (1 year by default).
- *     php craft super-images/cleanup --orphaned=1 --dry-run=0 --force=1
- *     php craft super-images/cleanup --orphaned=1 --retention-days=0 --dry-run=0 --force=1
- *
- *     # Nuclear option: every generated derivative except previews. Use after
- *     # a profile/geometry config change makes existing output obsolete.
- *     php craft super-images/cleanup --all=1 --dry-run=0 --force=1
+ *     php craft super-images/cleanup --dry-run=1
+ *     php craft super-images/cleanup --retention-days=7
+ *     php craft super-images/cleanup --all=1
+ *     php craft super-images/cleanup --asset=123
+ *     php craft super-images/cleanup --orphaned=1
  */
 class CleanupController extends Controller
 {
     /**
-     * Dry-run when 1 (default). Set 0 with --force to delete.
+     * When true, list matches without deleting.
      *
-     * @var int
+     * @var bool
      */
-    public int $dryRun = 1;
-
-    /**
-     * Required with --dry-run=0 to actually delete.
-     *
-     * @var int
-     */
-    public int $force = 0;
+    public bool $dryRun = false;
 
     /**
      * Purge derivatives for a single Craft asset ID.
@@ -69,24 +50,15 @@ class CleanupController extends Controller
     public bool $orphaned = false;
 
     /**
-     * Purge every generated derivative (excluding Playground previews).
+     * Delete every derivative immediately, ignoring retention.
      *
      * @var bool
      */
     public bool $all = false;
 
     /**
-     * Kept for backwards compatibility; preview cleanup is the default mode
-     * and this flag is a no-op unless one of --asset/--orphaned/--all is set.
-     *
-     * @var int
-     */
-    public int $previewsOnly = 1;
-
-    /**
-     * Override retention days for the selected mode:
-     * `cleanup.previewRetentionDays` for the default preview mode, or
-     * `cleanup.generatedRetentionDays` for `--orphaned`/`--all`.
+     * Temporary retention override (days) for aged / orphaned sweeps.
+     * Ignored when `--all=1`.
      *
      * @var int|null
      */
@@ -103,11 +75,9 @@ class CleanupController extends Controller
     {
         return array_merge(parent::options($actionID), [
             'dryRun',
-            'force',
             'asset',
             'orphaned',
             'all',
-            'previewsOnly',
             'retentionDays',
         ]);
     }
@@ -121,51 +91,166 @@ class CleanupController extends Controller
     {
         return [
             'd' => 'dryRun',
-            'f' => 'force',
             'a' => 'asset',
         ];
     }
 
     /**
-     * Runs the selected cleanup mode and prints a JSON summary.
+     * Runs the selected cleanup mode with generate-style progress output.
      *
-     * Mode precedence when multiple flags are set: `--asset` › `--orphaned` › `--all` › preview (default).
+     * Mode precedence: `--asset` › `--orphaned` › `--all` › aged (default).
      *
      * @return int Console exit code.
      */
     public function actionIndex(): int
     {
-        $dryRun = $this->dryRun !== 0;
+        $cleanup = Plugin::getInstance()->getCleanup();
+        $startedAt = microtime(true);
+        $onItem = $this->progressPrinter();
 
-        if (!$dryRun && $this->force === 0) {
-            $this->stderr(
-                "Refusing to delete without --force=1 when --dry-run=0.\n",
-                Console::FG_RED,
-            );
+        if ($this->asset !== null) {
+            $this->stdout(sprintf(
+                "%s derivatives for asset #%d…\n\n",
+                $this->dryRun ? 'Dry-run: listing' : 'Cleaning',
+                $this->asset,
+            ), Console::FG_CYAN);
 
-            return ExitCode::DATAERR;
+            $result = $cleanup->purgeAssetDerivatives($this->asset, $this->dryRun, $onItem);
+            $this->printSummary($result, $startedAt);
+
+            return ($result['errors'] ?? 0) > 0 ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
         }
 
-        $cleanup = Plugin::getInstance()->getCleanup();
+        if ($this->orphaned) {
+            $retention = $this->retentionLabel();
+            $this->stdout(sprintf(
+                "%s orphaned derivatives%s…\n\n",
+                $this->dryRun ? 'Dry-run: listing' : 'Cleaning',
+                $retention,
+            ), Console::FG_CYAN);
 
-        [$mode, $result] = match (true) {
-            $this->asset !== null => ['asset', $cleanup->purgeAssetDerivatives($this->asset, $dryRun)],
-            $this->orphaned => ['orphaned', $cleanup->purgeOrphanedDerivatives($dryRun, $this->retentionDays)],
-            $this->all => ['all', $cleanup->purgeAllDerivatives($dryRun, $this->retentionDays)],
-            default => ['previews', $cleanup->cleanupPreviews($dryRun, $this->retentionDays)],
-        };
+            $result = $cleanup->purgeOrphanedDerivatives($this->dryRun, $this->retentionDays, $onItem);
+            $this->printSummary($result, $startedAt);
 
-        $this->stdout(sprintf("Mode: %s\n", $mode), Console::FG_CYAN);
-        $this->stdout(Json::encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+            return ($result['errors'] ?? 0) > 0 ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
+        }
+
+        if ($this->all) {
+            $this->stdout(sprintf(
+                "%s all derivatives (no retention check)…\n\n",
+                $this->dryRun ? 'Dry-run: listing' : 'Cleaning',
+            ), Console::FG_CYAN);
+
+            $result = $cleanup->purgeStorageDerivatives($this->dryRun, ignoreRetention: true, onItem: $onItem);
+        } else {
+            $retention = $this->retentionLabel();
+            $this->stdout(sprintf(
+                "%s aged transforms%s…\n\n",
+                $this->dryRun ? 'Dry-run: listing' : 'Cleaning',
+                $retention,
+            ), Console::FG_CYAN);
+
+            $result = $cleanup->purgeStorageDerivatives($this->dryRun, $this->retentionDays, ignoreRetention: false, onItem: $onItem);
+        }
 
         if (($result['skipped'] ?? false) === true) {
             $this->stdout((string) ($result['reason'] ?? 'Skipped') . "\n", Console::FG_YELLOW);
+
+            return ExitCode::OK;
         }
 
-        if (($result['errors'] ?? 0) > 0) {
-            return ExitCode::UNSPECIFIED_ERROR;
+        if (($result['reason'] ?? null) !== null && ($result['candidates'] ?? 0) === 0 && ($result['skippedFresh'] ?? 0) === 0) {
+            $this->stdout((string) $result['reason'] . "\n", Console::FG_YELLOW);
         }
 
-        return ExitCode::OK;
+        $this->printSummary($result, $startedAt);
+
+        return ($result['errors'] ?? 0) > 0 ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
+    }
+
+    /**
+     * Builds a progress line printer matching generate CLI style.
+     *
+     * @return callable(string, string, int, int): void
+     */
+    private function progressPrinter(): callable
+    {
+        return function (string $path, string $action, int $index, int $total): void {
+            $progress = sprintf('[%d/%d]', $index, $total);
+            $line = sprintf('  %s [%s] %s', $progress, $action, $path);
+
+            match ($action) {
+                'deleted' => $this->stdout($line . "\n", Console::FG_GREEN),
+                'failed' => $this->stderr($line . "\n", Console::FG_RED),
+                default => $this->stdout($line . "\n"),
+            };
+        };
+    }
+
+    /**
+     * Human-readable retention suffix for the intro line.
+     *
+     * @return string Empty string or " (retention: N days)".
+     */
+    private function retentionLabel(): string
+    {
+        if ($this->retentionDays !== null) {
+            return sprintf(' (retention: %d day%s)', $this->retentionDays, $this->retentionDays === 1 ? '' : 's');
+        }
+
+        $settings = Plugin::getInstance()->getSettings();
+        $days = (int) (
+            $settings->cleanup['generatedRetentionDays']
+            ?? $settings->cleanup['obsoleteRetentionDays']
+            ?? 365
+        );
+
+        return sprintf(' (retention: %d day%s)', $days, $days === 1 ? '' : 's');
+    }
+
+    /**
+     * Prints a generate-style summary line.
+     *
+     * @param array<string, mixed> $result Cleanup report.
+     * @param float $startedAt microtime(true) when the run started.
+     *
+     * @return void
+     */
+    private function printSummary(array $result, float $startedAt): void
+    {
+        $elapsed = microtime(true) - $startedAt;
+        $candidates = (int) ($result['candidates'] ?? 0);
+
+        if ($candidates === 0 && ($result['errors'] ?? 0) === 0) {
+            $fresh = (int) ($result['skippedFresh'] ?? 0);
+            $this->stdout(sprintf(
+                "\nNothing to clean%s (%.1fs).\n",
+                $fresh > 0 ? sprintf(' — %d file%s still within retention', $fresh, $fresh === 1 ? '' : 's') : '',
+                $elapsed,
+            ), Console::FG_CYAN);
+
+            return;
+        }
+
+        $parts = [];
+
+        if ($this->dryRun) {
+            $parts[] = sprintf('matched=%d', $candidates);
+        } else {
+            $parts[] = sprintf('deleted=%d', (int) ($result['deleted'] ?? 0));
+        }
+
+        if (isset($result['skippedFresh'])) {
+            $parts[] = sprintf('kept=%d', (int) $result['skippedFresh']);
+        }
+
+        if (isset($result['assetsOrphaned'])) {
+            $parts[] = sprintf('assets=%d', (int) $result['assetsOrphaned']);
+        }
+
+        $parts[] = sprintf('failed=%d', (int) ($result['errors'] ?? 0));
+        $parts[] = sprintf('(%.1fs)', $elapsed);
+
+        $this->stdout("\nSummary: " . implode(' ', $parts) . "\n");
     }
 }

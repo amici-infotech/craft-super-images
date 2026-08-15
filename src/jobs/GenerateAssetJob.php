@@ -86,11 +86,21 @@ class GenerateAssetJob extends BaseJob
             return;
         }
 
-        $generation = Plugin::getInstance()->getGeneration();
+        $results = Plugin::getInstance()->getGeneration()->generateUnits($units, $this->force);
+        $this->setProgress($queue, 1);
 
-        foreach ($units as $index => $unit) {
-            $generation->generate($unit->toGenerationRequest(), $this->force);
-            $this->setProgress($queue, ($index + 1) / $total);
+        foreach ($results as $index => $result) {
+            if (!$result->success) {
+                Craft::warning(sprintf(
+                    'GenerateAssetJob: unit %d/%d failed for asset #%d (%s/%s.%s).',
+                    $index + 1,
+                    $total,
+                    $this->assetId,
+                    $units[$index]->profile ?? '?',
+                    $units[$index]->variant ?? '?',
+                    $units[$index]->format ?? '?',
+                ), __METHOD__);
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Conservative cleanup for Playground preview artifacts.
+ * Cleanup for Super Images preview and generated derivatives.
  *
  * @link      https://amiciinfotech.com
  * @copyright Copyright (c) 2026 Amici Infotech
@@ -20,152 +20,58 @@ use yii\base\Component;
 /**
  * Cleanup Service
  *
- * Scans and optionally deletes expired preview derivatives under the `preview/`
- * storage prefix, purges indexed derivatives for a specific or orphaned Craft
- * asset, and (when explicitly requested) sweeps every generated derivative.
- * Never touches originals.
+ * Scans local derivative storage for aged or all files, purges indexed
+ * derivatives for a specific or orphaned Craft asset, and optionally clears
+ * the asset derivative index. Never touches Craft originals.
  */
 class CleanupService extends Component
 {
-    /** Storage path prefix for preview artifacts; only paths under this prefix are eligible. */
-    private const PREVIEW_PREFIX = 'preview/';
-
-    /** Maximum number of path entries returned in cleanup results. */
-    private const LIST_LIMIT = 100;
-
     /**
-     * Scan and optionally delete expired preview derivatives.
+     * Scan and optionally delete expired preview derivatives under `preview/`.
      *
      * @param bool $dryRun When true, report candidates without deleting files.
-     * @param int|null $retentionDays Override retention; defaults to cleanup.previewRetentionDays from settings.
+     * @param int|null $retentionDays Override retention; defaults to cleanup.previewRetentionDays.
+     * @param null|callable(string $path, string $action, int $index, int $total): void $onItem Progress callback.
      *
-     * @return array<string, mixed> Cleanup report with counts, paths, and skip reason when applicable.
+     * @return array<string, mixed> Cleanup report.
      */
-    public function cleanupPreviews(bool $dryRun = true, ?int $retentionDays = null): array
+    public function cleanupPreviews(bool $dryRun = false, ?int $retentionDays = null, ?callable $onItem = null): array
     {
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
         $retentionDays ??= (int) ($settings->cleanup['previewRetentionDays'] ?? 2);
-        $retentionDays = max(0, $retentionDays);
-        $cutoff = time() - ($retentionDays * 86400);
-        $allowRemoteScan = (bool) ($settings->cleanup['allowRemoteScan'] ?? false);
 
-        $defaultName = (string) ($settings->storage['default'] ?? 'local');
-        $adapterConfig = $settings->storage['adapters'][$defaultName] ?? null;
-
-        $result = [
-            'dryRun' => $dryRun,
-            'retentionDays' => $retentionDays,
-            'cutoff' => $cutoff,
-            'adapter' => $defaultName,
-            'skipped' => false,
-            'reason' => null,
-            'candidates' => 0,
-            'deleted' => 0,
-            'skippedFresh' => 0,
-            'errors' => 0,
-            'paths' => [],
-            'pathsTruncated' => false,
-        ];
-
-        if (!is_array($adapterConfig)) {
-            $result['skipped'] = true;
-            $result['reason'] = sprintf('Default storage adapter "%s" is not configured.', $defaultName);
-
-            return $result;
-        }
-
-        $type = (string) ($adapterConfig['type'] ?? 'local');
-        if ($type !== 'local') {
-            $result['skipped'] = true;
-            $result['reason'] = $allowRemoteScan
-                ? 'Remote storage listing is not implemented; preview cleanup only supports local adapters.'
-                : 'Remote storage scan skipped (cleanup.allowRemoteScan is false). Preview cleanup only runs on local adapters.';
-
-            return $result;
-        }
-
-        $root = PathGuard::canonicalize(
-            Craft::getAlias((string) ($adapterConfig['path'] ?? '@webroot/uploads/super-images'))
+        return $this->purgeStorageDerivatives(
+            $dryRun,
+            $retentionDays,
+            ignoreRetention: false,
+            previewOnly: true,
+            onItem: $onItem,
         );
-        $previewRoot = rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'preview';
-
-        if (!is_dir($previewRoot)) {
-            $result['reason'] = sprintf('No preview directory found at %s', $previewRoot);
-
-            return $result;
-        }
-
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($previewRoot, RecursiveDirectoryIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST,
-        );
-
-        /** @var SplFileInfo $file */
-        foreach ($iterator as $file) {
-            if (!$file->isFile()) {
-                continue;
-            }
-
-            $fullPath = $file->getPathname();
-            $relative = ltrim(str_replace('\\', '/', substr($fullPath, strlen($root))), '/');
-
-            if (!$this->isSafePreviewPath($relative)) {
-                $result['errors']++;
-                continue;
-            }
-
-            $mtime = (int) $file->getMTime();
-            if ($mtime >= $cutoff) {
-                $result['skippedFresh']++;
-                continue;
-            }
-
-            $result['candidates']++;
-            $this->appendPath($result, $relative, $dryRun ? 'candidate' : 'deleted');
-
-            if ($dryRun) {
-                continue;
-            }
-
-            if (@unlink($fullPath)) {
-                $result['deleted']++;
-            } else {
-                $result['errors']++;
-            }
-        }
-
-        if (!$dryRun) {
-            $this->pruneEmptyDirectories($previewRoot);
-        }
-
-        return $result;
     }
 
     /**
      * Delete all indexed derivatives for a Craft asset.
      *
-     * Reads the per-asset derivative index, deletes storage objects and existence
-     * markers, then clears the index when not in dry-run mode.
-     *
      * @param int $assetId Craft asset element ID.
      * @param bool $dryRun When true, report candidates without deleting files.
+     * @param null|callable(string $path, string $action, int $index, int $total): void $onItem Progress callback.
      *
-     * @return array<string, mixed> Cleanup report with candidates, deleted, errors, and paths.
+     * @return array<string, mixed> Cleanup report with candidates, deleted, and errors.
      */
-    public function purgeAssetDerivatives(int $assetId, bool $dryRun = false): array
+    public function purgeAssetDerivatives(int $assetId, bool $dryRun = false, ?callable $onItem = null): array
     {
         $plugin = Plugin::getInstance();
         $entries = $plugin->getAssetDerivativeIndex()->entries($assetId);
+        $total = count($entries);
+        $index = 0;
 
         $result = [
             'dryRun' => $dryRun,
             'assetId' => $assetId,
-            'candidates' => count($entries),
+            'candidates' => $total,
             'deleted' => 0,
             'errors' => 0,
-            'paths' => [],
-            'pathsTruncated' => false,
         ];
 
         foreach ($entries as $entry) {
@@ -175,9 +81,11 @@ class CleanupService extends Component
                 ? $entry['adapter']
                 : (string) ($plugin->getSettings()->storage['default'] ?? 'local');
 
-            $this->appendPath($result, $storagePath, $dryRun ? 'candidate' : 'deleted');
+            $index++;
 
             if ($dryRun) {
+                $this->notify($onItem, $storagePath, 'dry-run', $index, $total);
+
                 continue;
             }
 
@@ -186,8 +94,10 @@ class CleanupService extends Component
                 $adapter->delete($storagePath);
                 $plugin->getExistenceMarkers()->delete($identity);
                 $result['deleted']++;
+                $this->notify($onItem, $storagePath, 'deleted', $index, $total);
             } catch (\Throwable $exception) {
                 $result['errors']++;
+                $this->notify($onItem, $storagePath, 'failed', $index, $total);
                 Craft::warning(
                     sprintf(
                         'Failed to purge derivative "%s" for asset %d: %s',
@@ -210,28 +120,21 @@ class CleanupService extends Component
     /**
      * Purge derivatives for Craft assets that no longer exist.
      *
-     * Iterates every indexed asset ID, checks whether the Craft element still
-     * exists (including trashed/disabled), and purges the index's derivatives
-     * for any asset that is genuinely gone. This is the fix for indexed
-     * derivatives surviving hard deletes that bypass the
-     * {@see \craft\elements\Asset::EVENT_BEFORE_DELETE} hook (e.g. direct
-     * database removal, or an index written before the hook was added).
-     *
-     * Respects `cleanup.generatedRetentionDays` (default 365) so a derivative
-     * is never removed before it has aged past the configured retention window,
-     * even when its asset is orphaned — set `$retentionDays` to `0` to disable
-     * this safety net for a single run.
-     *
      * @param bool $dryRun When true, report candidates without deleting files.
-     * @param int|null $retentionDays Override retention; defaults to cleanup.generatedRetentionDays from settings.
+     * @param int|null $retentionDays Override retention; defaults to cleanup.generatedRetentionDays.
+     * @param null|callable(string $path, string $action, int $index, int $total): void $onItem Progress callback.
      *
      * @return array<string, mixed> Aggregated cleanup report across all orphaned assets.
      */
-    public function purgeOrphanedDerivatives(bool $dryRun = true, ?int $retentionDays = null): array
+    public function purgeOrphanedDerivatives(bool $dryRun = false, ?int $retentionDays = null, ?callable $onItem = null): array
     {
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
-        $retentionDays ??= (int) ($settings->cleanup['generatedRetentionDays'] ?? 365);
+        $retentionDays ??= (int) (
+            $settings->cleanup['generatedRetentionDays']
+            ?? $settings->cleanup['obsoleteRetentionDays']
+            ?? 365
+        );
         $retentionDays = max(0, $retentionDays);
         $cutoff = time() - ($retentionDays * 86400);
 
@@ -248,8 +151,6 @@ class CleanupService extends Component
             'candidates' => 0,
             'deleted' => 0,
             'errors' => 0,
-            'paths' => [],
-            'pathsTruncated' => false,
         ];
 
         if ($assetIds === []) {
@@ -262,6 +163,7 @@ class CleanupService extends Component
             ->trashed(null)
             ->ids());
 
+        $orphanedIds = [];
         foreach ($assetIds as $assetId) {
             if (in_array($assetId, $existingIds, true)) {
                 continue;
@@ -274,18 +176,62 @@ class CleanupService extends Component
                 continue;
             }
 
-            $result['assetsOrphaned']++;
-            $assetReport = $this->purgeAssetDerivatives($assetId, $dryRun);
+            $orphanedIds[] = $assetId;
+        }
 
-            $result['candidates'] += $assetReport['candidates'];
-            $result['deleted'] += $assetReport['deleted'];
-            $result['errors'] += $assetReport['errors'];
+        $result['assetsOrphaned'] = count($orphanedIds);
 
-            foreach ($assetReport['paths'] as $entry) {
-                $this->appendPath($result, sprintf('asset#%d: %s', $assetId, $entry['path']), $entry['action']);
+        // Pre-count units so progress totals are accurate.
+        $pending = [];
+        $totalUnits = 0;
+        foreach ($orphanedIds as $assetId) {
+            $entries = $index->entries($assetId);
+            $pending[$assetId] = $entries;
+            $totalUnits += count($entries);
+        }
+
+        $result['candidates'] = $totalUnits;
+        $unitIndex = 0;
+
+        foreach ($pending as $assetId => $entries) {
+            foreach ($entries as $entry) {
+                $unitIndex++;
+                $label = sprintf('asset#%d %s', $assetId, $entry['storagePath']);
+                $identity = $entry['identity'];
+                $storagePath = $entry['storagePath'];
+                $adapterName = $entry['adapter'] !== ''
+                    ? $entry['adapter']
+                    : (string) ($settings->storage['default'] ?? 'local');
+
+                if ($dryRun) {
+                    $this->notify($onItem, $label, 'dry-run', $unitIndex, $totalUnits);
+
+                    continue;
+                }
+
+                try {
+                    $adapter = $plugin->getStorageManager()->select($adapterName);
+                    $adapter->delete($storagePath);
+                    $plugin->getExistenceMarkers()->delete($identity);
+                    $result['deleted']++;
+                    $this->notify($onItem, $label, 'deleted', $unitIndex, $totalUnits);
+                } catch (\Throwable $exception) {
+                    $result['errors']++;
+                    $this->notify($onItem, $label, 'failed', $unitIndex, $totalUnits);
+                    Craft::warning(
+                        sprintf(
+                            'Failed to purge derivative "%s" for orphaned asset %d: %s',
+                            $identity,
+                            $assetId,
+                            $exception->getMessage(),
+                        ),
+                        __METHOD__,
+                    );
+                }
             }
-            if ($assetReport['pathsTruncated']) {
-                $result['pathsTruncated'] = true;
+
+            if (!$dryRun) {
+                $index->clear((int) $assetId);
             }
         }
 
@@ -293,35 +239,43 @@ class CleanupService extends Component
     }
 
     /**
-     * Purge every generated derivative under the default local storage adapter,
-     * except Playground previews (use {@see cleanupPreviews()} for those).
-     *
-     * This is the "start clean" hammer for after a profile/geometry config
-     * change makes existing derivatives obsolete. Respects
-     * `cleanup.generatedRetentionDays` via mtime, same as
-     * {@see purgeOrphanedDerivatives()}. Only supports local adapters; run
-     * per-asset purges for remote storage instead.
+     * Sweep local derivative storage by age, or delete everything.
      *
      * @param bool $dryRun When true, report candidates without deleting files.
-     * @param int|null $retentionDays Override retention; defaults to cleanup.generatedRetentionDays from settings.
+     * @param int|null $retentionDays Override retention; defaults to cleanup.generatedRetentionDays.
+     * @param bool $ignoreRetention When true, delete every file regardless of age.
+     * @param bool $previewOnly When true, only consider paths under `preview/`.
+     * @param null|callable(string $path, string $action, int $index, int $total): void $onItem Progress callback.
      *
-     * @return array<string, mixed> Cleanup report with counts, paths, and skip reason when applicable.
+     * @return array<string, mixed> Cleanup report with counts and skip reason when applicable.
      */
-    public function purgeAllDerivatives(bool $dryRun = true, ?int $retentionDays = null): array
-    {
+    public function purgeStorageDerivatives(
+        bool $dryRun = false,
+        ?int $retentionDays = null,
+        bool $ignoreRetention = false,
+        bool $previewOnly = false,
+        ?callable $onItem = null,
+    ): array {
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
-        $retentionDays ??= (int) ($settings->cleanup['generatedRetentionDays'] ?? 365);
+        $retentionDays ??= (int) (
+            $settings->cleanup['generatedRetentionDays']
+            ?? $settings->cleanup['obsoleteRetentionDays']
+            ?? 365
+        );
         $retentionDays = max(0, $retentionDays);
-        $cutoff = time() - ($retentionDays * 86400);
+        $cutoff = $ignoreRetention ? null : time() - ($retentionDays * 86400);
+        $allowRemoteScan = (bool) ($settings->cleanup['allowRemoteScan'] ?? false);
 
         $defaultName = (string) ($settings->storage['default'] ?? 'local');
         $adapterConfig = $settings->storage['adapters'][$defaultName] ?? null;
 
         $result = [
             'dryRun' => $dryRun,
-            'retentionDays' => $retentionDays,
+            'retentionDays' => $ignoreRetention ? null : $retentionDays,
             'cutoff' => $cutoff,
+            'ignoreRetention' => $ignoreRetention,
+            'previewOnly' => $previewOnly,
             'adapter' => $defaultName,
             'skipped' => false,
             'reason' => null,
@@ -329,8 +283,6 @@ class CleanupService extends Component
             'deleted' => 0,
             'skippedFresh' => 0,
             'errors' => 0,
-            'paths' => [],
-            'pathsTruncated' => false,
         ];
 
         if (!is_array($adapterConfig)) {
@@ -343,7 +295,9 @@ class CleanupService extends Component
         $type = (string) ($adapterConfig['type'] ?? 'local');
         if ($type !== 'local') {
             $result['skipped'] = true;
-            $result['reason'] = 'Full derivative sweep only supports local adapters. Purge remote derivatives per-asset instead.';
+            $result['reason'] = $allowRemoteScan
+                ? 'Remote storage listing is not implemented; storage sweep only supports local adapters.'
+                : 'Remote storage scan skipped (cleanup.allowRemoteScan is false). Storage sweep only runs on local adapters.';
 
             return $result;
         }
@@ -352,14 +306,21 @@ class CleanupService extends Component
             Craft::getAlias((string) ($adapterConfig['path'] ?? '@webroot/uploads/super-images'))
         );
 
-        if (!is_dir($root)) {
-            $result['reason'] = sprintf('No storage directory found at %s', $root);
+        $scanRoot = $previewOnly
+            ? rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'preview'
+            : $root;
+
+        if (!is_dir($scanRoot)) {
+            $result['reason'] = sprintf('No storage directory found at %s', $scanRoot);
 
             return $result;
         }
 
+        /** @var list<array{0: string, 1: string}> $candidates [fullPath, relative] */
+        $candidates = [];
+
         $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($root, RecursiveDirectoryIterator::SKIP_DOTS),
+            new RecursiveDirectoryIterator($scanRoot, RecursiveDirectoryIterator::SKIP_DOTS),
             RecursiveIteratorIterator::CHILD_FIRST,
         );
 
@@ -372,35 +333,52 @@ class CleanupService extends Component
             $fullPath = $file->getPathname();
             $relative = ltrim(str_replace('\\', '/', substr($fullPath, strlen($root))), '/');
 
-            if ($relative === '' || str_contains($relative, '..') || str_starts_with($relative, self::PREVIEW_PREFIX)) {
+            if ($relative === '' || str_contains($relative, '..')) {
+                $result['errors']++;
                 continue;
             }
 
-            $mtime = (int) $file->getMTime();
-            if ($mtime >= $cutoff) {
-                $result['skippedFresh']++;
-
+            if ($previewOnly && !str_starts_with($relative, 'preview/')) {
                 continue;
             }
 
-            $result['candidates']++;
-            $this->appendPath($result, $relative, $dryRun ? 'candidate' : 'deleted');
+            if ($cutoff !== null) {
+                $mtime = (int) $file->getMTime();
+                if ($mtime >= $cutoff) {
+                    $result['skippedFresh']++;
+
+                    continue;
+                }
+            }
+
+            $candidates[] = [$fullPath, $relative];
+        }
+
+        $total = count($candidates);
+        $result['candidates'] = $total;
+
+        foreach ($candidates as $i => [$fullPath, $relative]) {
+            $index = $i + 1;
 
             if ($dryRun) {
+                $this->notify($onItem, $relative, 'dry-run', $index, $total);
+
                 continue;
             }
 
             if (@unlink($fullPath)) {
                 $result['deleted']++;
+                $this->notify($onItem, $relative, 'deleted', $index, $total);
             } else {
                 $result['errors']++;
+                $this->notify($onItem, $relative, 'failed', $index, $total);
             }
         }
 
         if (!$dryRun) {
-            $this->pruneEmptyDirectories($root);
+            $this->pruneEmptyDirectories($scanRoot);
 
-            if ($result['errors'] === 0) {
+            if ($ignoreRetention && !$previewOnly && $result['errors'] === 0) {
                 $plugin->getAssetDerivativeIndex()->clearAll();
             }
         }
@@ -409,44 +387,36 @@ class CleanupService extends Component
     }
 
     /**
-     * Validate that a relative storage path is safe for preview cleanup.
+     * @deprecated Use {@see purgeStorageDerivatives()} with `$ignoreRetention`.
      *
-     * @param string $relative Path relative to the storage root.
+     * @param bool $dryRun When true, report candidates without deleting files.
+     * @param int|null $retentionDays Override retention days.
      *
-     * @return bool True when the path starts with preview/ and contains no traversal segments.
+     * @return array<string, mixed>
      */
-    private function isSafePreviewPath(string $relative): bool
+    public function purgeAllDerivatives(bool $dryRun = false, ?int $retentionDays = null): array
     {
-        $relative = ltrim(str_replace('\\', '/', $relative), '/');
-
-        if ($relative === '' || str_contains($relative, '..')) {
-            return false;
-        }
-
-        return str_starts_with($relative, self::PREVIEW_PREFIX);
+        return $this->purgeStorageDerivatives($dryRun, $retentionDays, ignoreRetention: $retentionDays === 0);
     }
 
     /**
-     * Append a path entry to the cleanup result, respecting LIST_LIMIT.
+     * Invoke an optional progress callback.
      *
-     * @param array<string, mixed> $result Cleanup result array passed by reference.
-     * @param string $path Relative storage path.
-     * @param string $action Action label (candidate or deleted).
+     * @param null|callable(string, string, int, int): void $onItem Progress callback.
+     * @param string $path Relative path or label.
+     * @param string $action Action slug (deleted, dry-run, failed).
+     * @param int $index 1-based item index.
+     * @param int $total Total items in this run.
      *
      * @return void
      */
-    private function appendPath(array &$result, string $path, string $action): void
+    private function notify(?callable $onItem, string $path, string $action, int $index, int $total): void
     {
-        if (count($result['paths']) >= self::LIST_LIMIT) {
-            $result['pathsTruncated'] = true;
-
+        if ($onItem === null) {
             return;
         }
 
-        $result['paths'][] = [
-            'path' => $path,
-            'action' => $action,
-        ];
+        $onItem($path, $action, $index, $total);
     }
 
     /**

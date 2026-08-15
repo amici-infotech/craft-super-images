@@ -1,7 +1,7 @@
 {
     "name": "amici/craft-super-images",
     "description": "High-performance image processing, transformation, encoding, optimization, storage, and delivery for Craft CMS.",
-    "version": "5.0.0",
+    "version": "5.0.1",
     "type": "craft-plugin",
     "keywords": [
         "craft",

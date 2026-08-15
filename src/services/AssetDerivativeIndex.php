@@ -37,6 +37,28 @@ final class AssetDerivativeIndex extends Component
      */
     public function record(int $assetId, string $identity, string $storagePath, string $adapter): void
     {
+        $this->recordMany($assetId, [[
+            'identity' => $identity,
+            'storagePath' => $storagePath,
+            'adapter' => $adapter,
+        ]]);
+    }
+
+    /**
+     * Upserts many derivative entries for an asset in a single read/write cycle.
+     *
+     * @param int $assetId Craft asset element ID.
+     * @param list<array{identity: string, storagePath: string, adapter?: string}> $entries
+     *     Derivative entries to merge into the index.
+     *
+     * @return void
+     */
+    public function recordMany(int $assetId, array $entries): void
+    {
+        if ($entries === []) {
+            return;
+        }
+
         $payload = $this->read($assetId);
         $derivatives = $payload['derivatives'] ?? [];
         $indexed = [];
@@ -49,11 +71,19 @@ final class AssetDerivativeIndex extends Component
             $indexed[(string) $entry['identity']] = $entry;
         }
 
-        $indexed[$identity] = [
-            'identity' => $identity,
-            'storagePath' => $storagePath,
-            'adapter' => $adapter,
-        ];
+        foreach ($entries as $entry) {
+            $identity = (string) ($entry['identity'] ?? '');
+            $storagePath = (string) ($entry['storagePath'] ?? '');
+            if ($identity === '' || $storagePath === '') {
+                continue;
+            }
+
+            $indexed[$identity] = [
+                'identity' => $identity,
+                'storagePath' => $storagePath,
+                'adapter' => (string) ($entry['adapter'] ?? 'local'),
+            ];
+        }
 
         $this->write($assetId, [
             'assetId' => $assetId,

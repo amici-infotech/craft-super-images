@@ -18,6 +18,7 @@ use amici\SuperImages\Plugin;
 use amici\SuperImages\support\PathGuard;
 use amici\SuperImages\support\UrlGuard;
 use craft\elements\Asset;
+use craft\base\LocalFsInterface;
 use yii\base\Component;
 
 /**
@@ -28,6 +29,30 @@ use yii\base\Component;
  */
 class SourceResolver extends Component
 {
+    /**
+     * In-request cache of asset identity strings keyed by asset ID.
+     *
+     * @var array<int, string>
+     */
+    private array $_identityCache = [];
+
+    /**
+     * In-request cache of loaded Asset elements keyed by asset ID.
+     *
+     * @var array<int, Asset>
+     */
+    private array $_assetCache = [];
+
+    /**
+     * In-request cache of resolved SourceImage instances keyed by asset ID.
+     *
+     * Avoids repeated `getCopyOfFile()` / local path lookups when generating
+     * many variants for the same asset in one CLI/queue pass.
+     *
+     * @var array<int, SourceImage>
+     */
+    private array $_sourceCache = [];
+
     /**
      * Resolve a generation request into a usable SourceImage on disk.
      *
@@ -57,6 +82,49 @@ class SourceResolver extends Component
         }
 
         throw new SourceException('No valid source was provided.');
+    }
+
+    /**
+     * Drop cached SourceImage entries (e.g. after a batch finishes and temps are cleaned).
+     *
+     * Identity/asset element caches are kept — those are cheap and still valid.
+     *
+     * @param int|null $assetId When set, only that asset's source cache entry is cleared.
+     *
+     * @return void
+     */
+    public function clearSourceCache(?int $assetId = null): void
+    {
+        if ($assetId === null) {
+            $this->_sourceCache = [];
+
+            return;
+        }
+
+        unset($this->_sourceCache[$assetId]);
+    }
+
+    /**
+     * Lightweight path metadata for storage layout (no file copy/download).
+     *
+     * @param int $assetId Craft asset element ID.
+     *
+     * @return array{basename: string, folderHash: string, folderPath: string, filename: string}
+     *
+     * @throws SourceException When the asset is not found.
+     */
+    public function assetPathMeta(int $assetId): array
+    {
+        $asset = $this->getAssetById($assetId);
+        $filename = $asset->getFilename();
+        $folderPath = (string) $asset->folderPath;
+
+        return [
+            'filename' => $filename,
+            'basename' => pathinfo($filename, PATHINFO_FILENAME),
+            'folderPath' => $folderPath,
+            'folderHash' => Plugin::getInstance()->getStoragePathBuilder()->folderHash($folderPath),
+        ];
     }
 
     /**
@@ -117,42 +185,105 @@ class SourceResolver extends Component
     }
 
     /**
-     * Resolve a Craft asset into a temporary local SourceImage copy.
+     * Resolve a Craft asset into a local SourceImage.
+     *
+     * Local volumes use {@see Asset::getImageTransformSourcePath()} directly (no copy).
+     * Remote volumes fall back to a tracked temp copy via {@see Asset::getCopyOfFile()}.
      *
      * @param int $assetId The Craft asset element ID.
      *
-     * @return SourceImage The source image backed by a tracked temp copy of the asset file.
+     * @return SourceImage The source image backed by a readable filesystem path.
      *
      * @throws SourceException When the asset is not found or the file is not readable.
      */
     private function resolveAsset(int $assetId): SourceImage
     {
-        $asset = Asset::find()->id($assetId)->one();
-
-        if (!$asset instanceof Asset) {
-            throw new SourceException(sprintf('Asset "%d" was not found.', $assetId));
+        if (isset($this->_sourceCache[$assetId])) {
+            return $this->_sourceCache[$assetId];
         }
 
-        $path = $asset->getCopyOfFile();
+        $asset = $this->getAssetById($assetId);
+        [$path, $isTemporary] = $this->resolveAssetFilesystemPath($asset);
+
         if (!is_readable($path)) {
             throw new SourceException('Asset file is not readable.');
         }
 
-        Plugin::getInstance()->getTemporaryFiles()->track($path);
+        if ($isTemporary) {
+            Plugin::getInstance()->getTemporaryFiles()->track($path);
+        }
 
-        return new SourceImage(
+        $filename = $asset->getFilename();
+        $folderPath = (string) $asset->folderPath;
+
+        $source = new SourceImage(
             kind: SourceKind::Asset,
             identity: $this->assetIdentity($asset),
             path: $path,
             mime: $asset->getMimeType(),
             width: $asset->getWidth(),
             height: $asset->getHeight(),
-            isTemporary: true,
+            isTemporary: $isTemporary,
             metadata: [
                 'assetId' => $asset->id,
-                'filename' => $asset->getFilename(),
+                'filename' => $filename,
+                'basename' => pathinfo($filename, PATHINFO_FILENAME),
+                'folderPath' => $folderPath,
+                'folderHash' => Plugin::getInstance()->getStoragePathBuilder()->folderHash($folderPath),
             ],
         );
+
+        $this->_sourceCache[$assetId] = $source;
+
+        return $source;
+    }
+
+    /**
+     * Resolve a readable filesystem path for an asset, preferring zero-copy local FS access.
+     *
+     * @param Asset $asset The Craft asset element.
+     *
+     * @return array{0: string, 1: bool} Tuple of [absolute path, isTemporary].
+     */
+    private function resolveAssetFilesystemPath(Asset $asset): array
+    {
+        $fs = $asset->getVolume()->getFs();
+
+        if ($fs instanceof LocalFsInterface) {
+            $path = $asset->getImageTransformSourcePath();
+
+            if (is_readable($path)) {
+                return [$path, false];
+            }
+        }
+
+        return [$asset->getCopyOfFile(), true];
+    }
+
+    /**
+     * Load and cache an Asset element by ID.
+     *
+     * @param int $assetId The Craft asset element ID.
+     *
+     * @return Asset The loaded asset element.
+     *
+     * @throws SourceException When the asset is not found.
+     */
+    private function getAssetById(int $assetId): Asset
+    {
+        if (isset($this->_assetCache[$assetId])) {
+            return $this->_assetCache[$assetId];
+        }
+
+        $asset = Asset::find()->id($assetId)->status(null)->one();
+
+        if (!$asset instanceof Asset) {
+            throw new SourceException(sprintf('Asset "%d" was not found.', $assetId));
+        }
+
+        $this->_assetCache[$assetId] = $asset;
+
+        return $asset;
     }
 
     /**
@@ -187,7 +318,10 @@ class SourceResolver extends Component
             path: $path,
             mime: mime_content_type($path) ?: null,
             isTemporary: false,
-            metadata: ['path' => $path],
+            metadata: [
+                'path' => $path,
+                'basename' => pathinfo($path, PATHINFO_FILENAME),
+            ],
         );
     }
 
@@ -244,7 +378,16 @@ class SourceResolver extends Component
      */
     private function assetIdentity(Asset $asset): string
     {
-        return $this->formatAssetIdentity((int) $asset->id, $asset->dateModified?->getTimestamp() ?? 0);
+        $assetId = (int) $asset->id;
+
+        if (!isset($this->_identityCache[$assetId])) {
+            $this->_identityCache[$assetId] = $this->formatAssetIdentity(
+                $assetId,
+                $asset->dateModified?->getTimestamp() ?? 0,
+            );
+        }
+
+        return $this->_identityCache[$assetId];
     }
 
     /**
@@ -258,13 +401,11 @@ class SourceResolver extends Component
      */
     private function assetIdentityFromId(int $assetId): string
     {
-        $asset = Asset::find()->id($assetId)->one();
-
-        if (!$asset instanceof Asset) {
-            throw new SourceException(sprintf('Asset "%d" was not found.', $assetId));
+        if (isset($this->_identityCache[$assetId])) {
+            return $this->_identityCache[$assetId];
         }
 
-        return $this->assetIdentity($asset);
+        return $this->assetIdentity($this->getAssetById($assetId));
     }
 
     /**

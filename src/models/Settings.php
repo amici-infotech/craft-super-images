@@ -185,7 +185,7 @@ class Settings extends Model
             'allowUpscale' => false,
         ],
         'safety' => [
-            'maxSourcePixels' => 40_000_000, // reject huge sources after load
+            'maxSourcePixels' => 40_000_000, // soft-cap: downscale huge sources after load
         ],
         'cleanup' => [
             'onAssetDelete' => true,

@@ -207,9 +207,8 @@ return [
     'cleanup' => [
         // Delete Playground files under preview/ older than this many days.
         'previewRetentionDays' => 2,
-        // Minimum age (days) before `php craft super-images/cleanup --orphaned` or
-        // `--all` may delete a *generated* (non-preview) derivative. Defaults to a
-        // full year so images stay cached long-term — raise or lower as needed.
+        // Default aged cleanup and `--orphaned` only delete files older than this.
+        // Override per run with --retention-days. Use --all=1 to ignore entirely.
         // Does not affect immediate cleanup on Asset delete/replace (see policies.cleanup below).
         'generatedRetentionDays' => 365,
         // Allow expensive remote storage listing during cleanup (keep false).
@@ -234,7 +233,9 @@ return [
         ],
         // Safety limits checked after the source is loaded into memory.
         'safety' => [
-            // Reject sources whose width×height exceeds this pixel count.
+            // Soft cap on source width×height. Larger originals are downscaled to fit
+            // this budget before profile transforms run (they are not rejected).
+            // Distinct from runtime.maxPixels (which only limits signed lazy-generate URLs).
             'maxSourcePixels' => 40_000_000,
         ],
         // Asset lifecycle hooks for derivative cleanup (separate from retention days above).

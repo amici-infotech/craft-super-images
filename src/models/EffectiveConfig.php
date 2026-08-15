@@ -29,7 +29,7 @@ final class EffectiveConfig
      * @param array<string, mixed> $runtime Signed runtime URL settings and limits.
      * @param bool $optimizersEnabled Whether post-encode optimizers should run.
      * @param bool $allowUpscale Whether geometry operations may enlarge beyond source dimensions.
-     * @param int $maxSourcePixels Maximum source width×height allowed after load.
+     * @param int $maxSourcePixels Soft cap on source width×height; larger sources are downscaled to fit.
      */
     public function __construct(
         public readonly string $driver,
