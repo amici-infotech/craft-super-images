@@ -212,6 +212,7 @@ final class GdDriver extends AbstractDriver
             $handle->width,
             $handle->height,
         );
+        $this->sharpenAfterDownscale($dest, $handle->width, $handle->height, $targetWidth, $targetHeight);
 
         return new ImageHandle($this->name(), $dest, $targetWidth, $targetHeight, $handle->hasAlpha, $handle->mime);
     }
@@ -251,6 +252,7 @@ final class GdDriver extends AbstractDriver
             $cropWidth,
             $cropHeight,
         );
+        $this->sharpenAfterDownscale($dest, $cropWidth, $cropHeight, $width, $height);
 
         return new ImageHandle($this->name(), $dest, $width, $height, $handle->hasAlpha, $handle->mime);
     }
@@ -553,6 +555,49 @@ final class GdDriver extends AbstractDriver
         imagecopy($clone, $resource, 0, 0, 0, 0, $width, $height);
 
         return $clone;
+    }
+
+    /**
+     * Applies a light convolution sharpen after downscaling when configured.
+     *
+     * @param \GdImage|resource $resource Image already resampled to the target dimensions.
+     * @param int $sourceWidth Pre-resize width.
+     * @param int $sourceHeight Pre-resize height.
+     * @param int $targetWidth Post-resize width.
+     * @param int $targetHeight Post-resize height.
+     *
+     * @return void
+     */
+    private function sharpenAfterDownscale(
+        $resource,
+        int $sourceWidth,
+        int $sourceHeight,
+        int $targetWidth,
+        int $targetHeight,
+    ): void {
+        if ($targetWidth >= $sourceWidth && $targetHeight >= $sourceHeight) {
+            return;
+        }
+
+        $unsharp = $this->sharpness()->unsharp;
+        if ($unsharp === null || !function_exists('imageconvolution')) {
+            return;
+        }
+
+        $amount = max(0.0, min(2.0, (float) $unsharp['amount']));
+        if ($amount <= 0.0) {
+            return;
+        }
+
+        // Brightness-preserving 3×3 kernel scaled by unsharp amount.
+        $side = -($amount * 0.25);
+        $center = 1.0 + $amount;
+        $matrix = [
+            [0.0, $side, 0.0],
+            [$side, $center, $side],
+            [0.0, $side, 0.0],
+        ];
+        imageconvolution($resource, $matrix, 1.0, 0.0);
     }
 
     /**

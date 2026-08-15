@@ -14,6 +14,7 @@ use amici\SuperImages\exceptions\ProcessingException;
 use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\Dimensions;
 use amici\SuperImages\models\ImageHandle;
+use amici\SuperImages\models\SharpnessSettings;
 
 /**
  * Abstract Driver
@@ -25,6 +26,9 @@ abstract class AbstractDriver implements ImageDriverInterface
     /** @var bool Whether geometry operations may enlarge beyond source dimensions. */
     protected bool $allowUpscale = true;
 
+    /** @var SharpnessSettings|null Downscale blur / unsharp settings for this run. */
+    protected ?SharpnessSettings $sharpness = null;
+
     /**
      * Controls whether resize, crop, fit, fill, and scale may produce output larger than the source.
      *
@@ -35,6 +39,28 @@ abstract class AbstractDriver implements ImageDriverInterface
     public function setAllowUpscale(bool $allow): void
     {
         $this->allowUpscale = $allow;
+    }
+
+    /**
+     * Sets downscale sharpness (Imagick blur factor and optional unsharp mask).
+     *
+     * @param SharpnessSettings $sharpness Resolved sharpness settings for this generation.
+     *
+     * @return void
+     */
+    public function setSharpness(SharpnessSettings $sharpness): void
+    {
+        $this->sharpness = $sharpness;
+    }
+
+    /**
+     * Returns the active sharpness settings, defaulting to the `sharp` preset.
+     *
+     * @return SharpnessSettings Active sharpness settings.
+     */
+    protected function sharpness(): SharpnessSettings
+    {
+        return $this->sharpness ??= SharpnessSettings::fromConfig('sharp');
     }
 
     /**

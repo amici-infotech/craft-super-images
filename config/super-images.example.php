@@ -130,11 +130,23 @@ return [
 
     // Native encode options passed to the selected image driver.
     // Encoding itself is done by GD / Imagick / Libvips — not by jpegoptim/cwebp.
+    // Optional `arguments` apply when an external tool (e.g. cwebp) is used for that format.
     'encoders' => [
         // JPEG quality (0–100) and related options.
         'jpeg' => ['quality' => 82],
-        // WebP quality (0–100).
-        'webp' => ['quality' => 80],
+        // WebP quality (0–100). method/effort is passed to cwebp when webp optimizer is cwebp.
+        'webp' => [
+            'quality' => 80,
+            // 'method' => 4,
+            // Custom cwebp argv (replaces defaults). Tokens: {input} {output} {quality} {effort} {method}
+            // 'arguments' => [
+            //     '-q' => '{quality}',
+            //     '-m' => 6,
+            //     '-sharp_yuv' => true,
+            //     '-o' => '{output}',
+            //     '_' => ['{input}'],
+            // ],
+        ],
         // AVIF quality (0–100) when AVIF is enabled in a profile.
         'avif' => ['quality' => 65],
     ],
@@ -154,10 +166,21 @@ return [
             'avifenc' => App::env('SUPER_IMAGES_AVIFENC') ?: 'avifenc',
         ],
         // Which optimizer tool to run per output format (null = skip).
-        // Or: 'jpeg' => ['tool' => 'jpegoptim', 'binary' => '/usr/bin/jpegoptim'],
+        // Or: ['tool' => 'jpegoptim', 'binary' => '/usr/bin/jpegoptim', 'arguments' => [...]]
         'jpeg' => 'jpegoptim',
+        // Example with custom jpegoptim flags (replaces built-in --stdout --strip-all recipe):
+        // 'jpeg' => [
+        //     'tool' => 'jpegoptim',
+        //     'binary' => App::env('SUPER_IMAGES_JPEGOPTIM') ?: 'jpegoptim',
+        //     'arguments' => [
+        //         '--stdout' => true,
+        //         '--strip-all' => true,
+        //         '--max' => 85,
+        //         '_' => ['{input}'],
+        //     ],
+        // ],
         'png' => 'oxipng',
-        'webp' => null, // set to 'cwebp' to re-optimize WebP via libwebp
+        'webp' => 'cwebp', // PNG→cwebp when binary exists; otherwise native Imagick/libvips WebP
         'avif' => null,
     ],
 
@@ -230,6 +253,9 @@ return [
         'geometry' => [
             // When false, output never exceeds source dimensions (small sources stay small).
             'allowUpscale' => false,
+            // Downscale sharpness vs Imager/Craft. Presets: soft | normal | sharp | extra
+            // Or override: ['preset' => 'sharp', 'blur' => 0.82, 'unsharp' => [...|false]]
+            'sharpness' => 'sharp',
         ],
         // Safety limits checked after the source is loaded into memory.
         'safety' => [

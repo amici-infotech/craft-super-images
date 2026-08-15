@@ -184,6 +184,7 @@ final class LibvipsDriver extends AbstractDriver
         $image = $handle->resource;
         [$targetWidth, $targetHeight] = $this->resolveTargetDimensions($handle, $width, $height, $mode);
         $resized = $image->resize($targetWidth / $handle->width, ['vscale' => $targetHeight / $handle->height]);
+        $resized = $this->sharpenAfterDownscale($resized, $handle->width, $handle->height, $targetWidth, $targetHeight);
 
         return $this->handleFromImage($resized, $handle->mime);
     }
@@ -215,6 +216,7 @@ final class LibvipsDriver extends AbstractDriver
             $width / $cropWidth,
             ['vscale' => $height / $cropHeight],
         );
+        $cropped = $this->sharpenAfterDownscale($cropped, $cropWidth, $cropHeight, $width, $height);
 
         return $this->handleFromImage($cropped, $handle->mime);
     }
@@ -388,6 +390,38 @@ final class LibvipsDriver extends AbstractDriver
         $image = $handle->resource;
 
         return $this->handleFromImage($image->gaussblur($sigma), $handle->mime);
+    }
+
+    /**
+     * Applies a light libvips sharpen after downscaling when configured.
+     *
+     * @param Image $image Image already resized to the target dimensions.
+     * @param int $sourceWidth Pre-resize width.
+     * @param int $sourceHeight Pre-resize height.
+     * @param int $targetWidth Post-resize width.
+     * @param int $targetHeight Post-resize height.
+     *
+     * @return Image Possibly sharpened image.
+     */
+    private function sharpenAfterDownscale(
+        Image $image,
+        int $sourceWidth,
+        int $sourceHeight,
+        int $targetWidth,
+        int $targetHeight,
+    ): Image {
+        if ($targetWidth >= $sourceWidth && $targetHeight >= $sourceHeight) {
+            return $image;
+        }
+
+        $unsharp = $this->sharpness()->unsharp;
+        if ($unsharp === null) {
+            return $image;
+        }
+
+        $sigma = max(0.1, (float) $unsharp['sigma']);
+
+        return $image->sharpen(['sigma' => $sigma]);
     }
 
     /**

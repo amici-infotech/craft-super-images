@@ -61,7 +61,7 @@ class BinaryOptimizer implements OptimizerInterface
      *
      * @param EncodedImage $encoded The image produced by the encoder stage.
      * @param string $format Target format slug used to pick file extensions and tool behavior.
-     * @param array<string, mixed> $options Tool selection, binary path, quality, and other tool-specific settings.
+     * @param array<string, mixed> $options Tool selection, binary path, quality, arguments, and other settings.
      *
      * @return EncodedImage The optimized image, or the original when optimization is skipped or fails.
      */
@@ -98,9 +98,11 @@ class BinaryOptimizer implements OptimizerInterface
         $finalPath = $output;
 
         if ($tool === 'jpegoptim') {
-            // --stdout emits optimized bytes on stdout; persist them to the temp output path.
+            // Default recipe uses --stdout; custom arguments may write in-place or to {output}.
             if ($result['stdout'] !== '') {
                 file_put_contents($output, $result['stdout']);
+                $finalPath = $output;
+            } elseif (is_readable($output) && filesize($output) > 0) {
                 $finalPath = $output;
             } elseif (is_readable($input)) {
                 $finalPath = $input;
@@ -117,12 +119,15 @@ class BinaryOptimizer implements OptimizerInterface
     /**
      * Builds the CLI argument list for the requested optimizer tool.
      *
+     * When `arguments` / `args` is set in options, that list replaces the built-in recipe
+     * (after the binary). Tokens: `{input}`, `{output}`, `{quality}`, `{effort}`, `{method}`.
+     *
      * @param string $tool Optimizer tool slug.
      * @param string $binary Resolved absolute path to the executable.
      * @param string $format Target format slug.
      * @param string $input Absolute path to the input file.
      * @param string $output Absolute path to the output file.
-     * @param array<string, mixed> $options Tool-specific options such as quality.
+     * @param array<string, mixed> $options Tool-specific options such as quality and arguments.
      *
      * @return list<string> Command and arguments suitable for ProcessRunner.
      *
@@ -137,16 +142,63 @@ class BinaryOptimizer implements OptimizerInterface
         array $options,
     ): array {
         $format = strtolower($format) === 'jpg' ? 'jpeg' : strtolower($format);
+        $custom = Plugin::getInstance()->getOptimizerManager()->normalizeArguments(
+            $options['arguments'] ?? $options['args'] ?? null,
+        );
+
+        if ($custom !== []) {
+            return array_merge([$binary], $this->expandArgumentTokens($custom, $input, $output, $options));
+        }
 
         return match ($tool) {
             'jpegoptim' => [$binary, '--stdout', '--strip-all', $input],
             'oxipng' => [$binary, '-o', '2', '--out', $output, $input],
             'optipng' => [$binary, '-out', $output, $input],
             'pngquant' => [$binary, '--force', '--output', $output, $input],
-            'cwebp' => [$binary, '-q', (string) ($options['quality'] ?? 80), $input, '-o', $output],
+            'cwebp' => [
+                $binary,
+                '-q',
+                (string) ($options['quality'] ?? 80),
+                '-m',
+                (string) ($options['effort'] ?? $options['method'] ?? 4),
+                '-sharp_yuv',
+                $input,
+                '-o',
+                $output,
+            ],
             'avifenc' => [$binary, $input, $output],
             default => throw new OptimizerUnavailableException(sprintf('Unknown optimizer tool "%s".', $tool)),
         };
+    }
+
+    /**
+     * Replaces `{input}`, `{output}`, `{quality}`, `{effort}`, and `{method}` tokens.
+     *
+     * @param list<string> $arguments Argument list from config.
+     * @param string $input Absolute input path.
+     * @param string $output Absolute output path.
+     * @param array<string, mixed> $options Quality / effort options.
+     *
+     * @return list<string>
+     */
+    private function expandArgumentTokens(array $arguments, string $input, string $output, array $options): array
+    {
+        $quality = (string) ($options['quality'] ?? 80);
+        $effort = (string) ($options['effort'] ?? $options['method'] ?? 4);
+        $replacements = [
+            '{input}' => $input,
+            '{output}' => $output,
+            '{quality}' => $quality,
+            '{effort}' => $effort,
+            '{method}' => $effort,
+        ];
+
+        $expanded = [];
+        foreach ($arguments as $argument) {
+            $expanded[] = strtr($argument, $replacements);
+        }
+
+        return $expanded;
     }
 
     /**

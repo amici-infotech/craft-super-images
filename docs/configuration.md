@@ -28,8 +28,8 @@ Every key in the example file is commented. Live servers are assumed to be **Ubu
 | `sources` | Local allow-list + remote host allow-list |
 | `runtime` | Signed URL TTL, signing secret, size limits |
 | `storage` | Adapters + marker path |
-| `encoders` | Native encode options (quality, etc.) |
-| `optimizers` | Binary tools + paths + per-format selection |
+| `encoders` | Native encode options (quality, optional CLI `arguments`) |
+| `optimizers` | Binary tools + paths + per-format selection + optional `arguments` |
 | `profiles` | Variants × formats |
 | `volumes` / `folders` / `fields` | Scoped overrides |
 | `cleanup` | Preview / obsolete retention |

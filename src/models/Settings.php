@@ -18,7 +18,7 @@ use craft\base\Model;
 class Settings extends Model
 {
     /** @var int Schema version included in generation identity payloads. */
-    public const SCHEMA_VERSION = 2;
+    public const SCHEMA_VERSION = 3;
 
     /** @var bool Whether the plugin processes generation requests. */
     public bool $enabled = true;
@@ -116,7 +116,8 @@ class Settings extends Model
             'cwebp' => 'cwebp',
             'avifenc' => 'avifenc',
         ],
-        // Per-format tool: string name, null, or ['tool' => 'jpegoptim', 'binary' => '/usr/bin/jpegoptim']
+        // Per-format tool: string name, null, or
+        // ['tool' => 'jpegoptim', 'binary' => '/usr/bin/jpegoptim', 'arguments' => ['--max' => 85, '_' => ['{input}']]]
         'jpeg' => 'jpegoptim',
         'png' => 'oxipng',
         'webp' => null,
@@ -183,6 +184,11 @@ class Settings extends Model
         ],
         'geometry' => [
             'allowUpscale' => false,
+            /**
+             * Downscale sharpness: soft | normal | sharp | extra
+             * Or an array: ['preset' => 'sharp', 'blur' => 0.82, 'unsharp' => [...|false]]
+             */
+            'sharpness' => 'sharp',
         ],
         'safety' => [
             'maxSourcePixels' => 40_000_000, // soft-cap: downscale huge sources after load

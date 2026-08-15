@@ -12,9 +12,9 @@ Optimizer optionally post-processes those bytes (jpegoptim, cwebp, …)
 Storage writes the final object
 ```
 
-**Encoders** are native driver encoders. Configure quality under `encoders`.
+**Encoders** are native driver encoders. Configure quality (and optional CLI args for external tools) under `encoders`.
 
-**Optimizers** are optional external binaries. Configure which tool runs per format, and the binary path on each Ubuntu host.
+**Optimizers** are optional external binaries. Configure which tool runs per format, binary paths, and custom CLI arguments.
 
 ---
 
@@ -23,10 +23,36 @@ Storage writes the final object
 ```php
 'encoders' => [
     'jpeg' => ['quality' => 82],
-    'webp' => ['quality' => 80],
+    'webp' => [
+        'quality' => 80,
+        'method' => 4, // passed to cwebp as -m when using PNG→cwebp
+    ],
     'avif' => ['quality' => 65],
 ],
 ```
+
+### Custom CLI arguments on encoders
+
+When a format uses an external tool (for example `optimizers.webp = 'cwebp'`), you can override the full argument list after the binary. Prefer a **key/value** map:
+
+```php
+'encoders' => [
+    'webp' => [
+        'quality' => 80,
+        'arguments' => [
+            '-q' => '{quality}',
+            '-m' => 6,
+            '-sharp_yuv' => true,
+            '-o' => '{output}',
+            '_' => ['{input}'], // trailing positionals
+        ],
+    ],
+],
+```
+
+A flat token list still works: `['-q', '{quality}', '{input}', '-o', '{output}']`.
+
+Optimizer-level `arguments` win over encoder-level `arguments` when both are set.
 
 ---
 
@@ -52,14 +78,37 @@ Storage writes the final object
 
 Typical Ubuntu paths after apt install: `/usr/bin/jpegoptim`, `/usr/bin/cwebp`, etc.
 
-### Per-format override with an explicit binary
+### Per-format override with binary + arguments
 
 ```php
 'jpeg' => [
     'tool' => 'jpegoptim',
     'binary' => App::env('SUPER_IMAGES_JPEGOPTIM') ?: '/usr/bin/jpegoptim',
+    // Replaces the built-in recipe. Tokens: {input} {output} {quality} {effort} {method}
+    'arguments' => [
+        '--stdout' => true,
+        '--strip-all' => true,
+        '--max' => 85,       // → --max 85
+        // '--max=' => 85,   // → --max=85
+        '_' => ['{input}'],
+    ],
 ],
 ```
+
+Rules for key/value maps:
+
+| Value | Result |
+|---|---|
+| `true` or `''` | Flag only (`--strip-all`) |
+| `false` or `null` | Skipped |
+| scalar | Flag + value as two argv tokens (`--max`, `85`) |
+| key ending in `=` | Single token (`--max=85`) |
+| `'_'` / `'positional(s)'` | Trailing positionals list |
+| integer keys | Positional token (value only) |
+
+`arguments` may also be a flat list or a whitespace-separated string. Alias key: `args`.
+
+When `arguments` is omitted, Super Images uses built-in recipes (jpegoptim stdout strip, cwebp with `-q` / `-m` / `-sharp_yuv`, etc.).
 
 ### Recommended `.env` on Ubuntu
 

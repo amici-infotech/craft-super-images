@@ -31,6 +31,40 @@ Controls how encoded derivatives are written (metadata stripping, progressive JP
 | Key | Default | Effect |
 |---|---|---|
 | `allowUpscale` | `false` | When false, resize/fit operations will not enlarge beyond the source dimensions |
+| `sharpness` | `sharp` | Downscale sharpness preset or options (see below) |
+
+### Sharpness
+
+Controls Imagick Lanczos blur, post-downscale unsharp (Imagick/GD/libvips), and how crisp derivatives look versus softer defaults.
+
+```php
+'policies' => [
+    'geometry' => [
+        'allowUpscale' => false,
+        // Presets softest → sharpest:
+        'sharpness' => 'sharp', // soft | normal | sharp | extra
+    ],
+],
+```
+
+Fine-tune without changing the preset name in the identity hash base:
+
+```php
+'sharpness' => [
+    'preset' => 'sharp',
+    'blur' => 0.82, // Imagick resize blur (< 1 sharpens, > 1 softens)
+    'unsharp' => [  // or false to disable
+        'radius' => 0.0,
+        'sigma' => 0.6,
+        'amount' => 0.85,
+        'threshold' => 0.02,
+    ],
+],
+```
+
+Changing sharpness regenerates derivatives (included in the generation identity). Prefer Imagick (or libvips) over GD for results closest to Craft/Imager.
+
+For WebP via `cwebp`, also see [Encoders & optimizers](./encoders-optimizers.md) (`method`, `-sharp_yuv`, custom `arguments`).
 
 ---
 

@@ -15,6 +15,7 @@ use amici\SuperImages\exceptions\ProcessingException;
 use amici\SuperImages\exceptions\SourceException;
 use amici\SuperImages\models\EffectiveConfig;
 use amici\SuperImages\models\EncodedImage;
+use amici\SuperImages\models\EncodeOptions;
 use amici\SuperImages\models\GenerationDefinition;
 use amici\SuperImages\models\GenerationRequest;
 use amici\SuperImages\models\GenerationResult;
@@ -339,6 +340,7 @@ class GenerationService extends Component
 
             if ($driver instanceof AbstractDriver) {
                 $driver->setAllowUpscale($config->allowUpscale);
+                $driver->setSharpness($config->sharpness);
             }
 
             $handle = $plugin->getOperationPipeline()->apply($handle, $driver, $definition->operations);
@@ -349,30 +351,108 @@ class GenerationService extends Component
                 'identity' => $identity,
             ]));
 
-            $encoder = $plugin->getEncoderManager()->select($definition->format);
-            $encoded = $encoder->encode($handle, $definition->format, $definition->encodeOptions, $driver);
-
-            $this->trigger(self::EVENT_AFTER_ENCODE, new GenerationEvent([
-                'request' => $request,
-                'definition' => $definition,
-                'identity' => $identity,
-            ]));
-
-            $optimizer = $plugin->getOptimizerManager()->select(
-                $definition->format,
-                $definition->optimizerOptions,
-                $config->optimizersEnabled,
-            );
             $formatKey = $this->normalizeFormatKey($definition->format);
             $rawTool = $definition->optimizerOptions[$definition->format]
                 ?? $definition->optimizerOptions[$formatKey]
                 ?? null;
-            [$optimizerTool, $optimizerBinary] = $plugin->getOptimizerManager()->normalizeToolConfig($rawTool);
-            $encoded = $optimizer->optimize($encoded, $definition->format, array_filter([
-                'tool' => $optimizerTool,
-                'binary' => $optimizerBinary,
-                'quality' => $definition->encodeOptions->quality,
-            ], static fn(mixed $value): bool => $value !== null && $value !== ''));
+            [$optimizerTool, $optimizerBinary, $optimizerArguments] = $plugin->getOptimizerManager()->normalizeToolConfig($rawTool);
+            $encoderArguments = $plugin->getOptimizerManager()->normalizeArguments(
+                $definition->encodeOptions->extra['arguments']
+                    ?? $definition->encodeOptions->extra['args']
+                    ?? null,
+            );
+            $cliArguments = $optimizerArguments !== [] ? $optimizerArguments : $encoderArguments;
+
+            // Only route through PNG→cwebp/avifenc when the binary is actually callable.
+            // Otherwise we used to write a PNG and rename it .webp (~MB files).
+            $externalEncoder = null;
+            if (
+                $config->optimizersEnabled
+                && in_array($formatKey, ['webp', 'avif'], true)
+                && in_array($optimizerTool, ['cwebp', 'avifenc'], true)
+                && $plugin->getBinaryResolver()->isAvailable((string) $optimizerTool, $optimizerBinary)
+            ) {
+                $externalEncoder = $optimizerTool;
+            }
+
+            if ($externalEncoder !== null) {
+                $pngEncoder = $plugin->getEncoderManager()->select('png');
+                $encoded = $pngEncoder->encode(
+                    $handle,
+                    'png',
+                    new EncodeOptions(
+                        quality: 100,
+                        stripMetadata: $definition->encodeOptions->stripMetadata,
+                        extra: ['pngCompression' => 1],
+                    ),
+                    $driver,
+                );
+
+                $this->trigger(self::EVENT_AFTER_ENCODE, new GenerationEvent([
+                    'request' => $request,
+                    'definition' => $definition,
+                    'identity' => $identity,
+                ]));
+
+                $optimizer = $plugin->getOptimizerManager()->select(
+                    $definition->format,
+                    $definition->optimizerOptions,
+                    true,
+                );
+                $encoded = $optimizer->optimize(
+                    $encoded,
+                    $definition->format,
+                    $this->buildOptimizerOptions(
+                        $externalEncoder,
+                        $optimizerBinary,
+                        $definition->encodeOptions->quality,
+                        $definition->encodeOptions->extra['effort']
+                            ?? $definition->encodeOptions->extra['method']
+                            ?? null,
+                        $cliArguments,
+                    ),
+                );
+
+                if (!$this->encodedMatchesFormat($encoded, $definition->format)) {
+                    // Binary missing/failed — fall back to native WebP/AVIF encode (never ship PNG).
+                    $encoder = $plugin->getEncoderManager()->select($definition->format);
+                    $encoded = $encoder->encode($handle, $definition->format, $definition->encodeOptions, $driver);
+                } else {
+                    $encoded = $encoded->withFormat(
+                        $definition->format,
+                        $this->mimeFromFormat($definition->format),
+                    );
+                }
+            } else {
+                $encoder = $plugin->getEncoderManager()->select($definition->format);
+                $encoded = $encoder->encode($handle, $definition->format, $definition->encodeOptions, $driver);
+
+                $this->trigger(self::EVENT_AFTER_ENCODE, new GenerationEvent([
+                    'request' => $request,
+                    'definition' => $definition,
+                    'identity' => $identity,
+                ]));
+
+                $optimizer = $plugin->getOptimizerManager()->select(
+                    $definition->format,
+                    $definition->optimizerOptions,
+                    $config->optimizersEnabled,
+                );
+                // Never run cwebp/avifenc as a "post-optimizer" on already-lossy output.
+                if (!in_array($optimizerTool, ['cwebp', 'avifenc'], true)) {
+                    $encoded = $optimizer->optimize(
+                        $encoded,
+                        $definition->format,
+                        $this->buildOptimizerOptions(
+                            $optimizerTool,
+                            $optimizerBinary,
+                            $definition->encodeOptions->quality,
+                            null,
+                            $cliArguments,
+                        ),
+                    );
+                }
+            }
 
             $this->validateEncodedOutput($encoded);
 
@@ -540,6 +620,38 @@ class GenerationService extends Component
     }
 
     /**
+     * Build options passed to {@see BinaryOptimizer::optimize()}.
+     *
+     * @param string|null $tool Optimizer tool slug.
+     * @param string|null $binary Optional absolute binary path.
+     * @param int|null $quality Encode quality for tools that accept it.
+     * @param int|string|null $effort Compression effort / method for cwebp-style tools.
+     * @param list<string> $arguments Custom CLI arguments (may include tokens).
+     *
+     * @return array<string, mixed>
+     */
+    private function buildOptimizerOptions(
+        ?string $tool,
+        ?string $binary,
+        ?int $quality,
+        int|string|null $effort,
+        array $arguments,
+    ): array {
+        $options = array_filter([
+            'tool' => $tool,
+            'binary' => $binary,
+            'quality' => $quality,
+            'effort' => $effort,
+        ], static fn(mixed $value): bool => $value !== null && $value !== '');
+
+        if ($arguments !== []) {
+            $options['arguments'] = $arguments;
+        }
+
+        return $options;
+    }
+
+    /**
      * Validate that encoded output has usable dimensions and payload.
      *
      * @param EncodedImage $encoded The encoded image produced by the encoder/optimizer pipeline.
@@ -561,6 +673,42 @@ class GenerationService extends Component
         if (!$encoded->hasBytes() && !$encoded->hasPath()) {
             throw new ProcessingException('Encoded output has no readable payload.');
         }
+    }
+
+    /**
+     * Whether encoded payload bytes match the expected output format.
+     *
+     * Used after PNG→cwebp/avifenc so a failed binary never ships a PNG as `.webp`.
+     *
+     * @param EncodedImage $encoded Encoded or optimized payload.
+     * @param string $format Expected format slug (webp, avif, …).
+     *
+     * @return bool True when magic bytes / mime match the format.
+     */
+    private function encodedMatchesFormat(EncodedImage $encoded, string $format): bool
+    {
+        $format = $this->normalizeFormatKey($format);
+        $expectedMime = $this->mimeFromFormat($format);
+
+        $header = '';
+        if ($encoded->hasPath() && is_readable((string) $encoded->path)) {
+            $header = (string) file_get_contents((string) $encoded->path, false, null, 0, 16);
+        } elseif ($encoded->hasBytes()) {
+            $header = substr((string) $encoded->bytes, 0, 16);
+        }
+
+        if ($header === '') {
+            return false;
+        }
+
+        return match ($format) {
+            'webp' => str_starts_with($header, 'RIFF') && str_contains($header, 'WEBP'),
+            'avif' => str_contains($header, 'ftyp'),
+            'png' => str_starts_with($header, "\x89PNG"),
+            'jpeg' => str_starts_with($header, "\xFF\xD8\xFF"),
+            'gif' => str_starts_with($header, 'GIF8'),
+            default => $encoded->mime === $expectedMime,
+        };
     }
 
     /**

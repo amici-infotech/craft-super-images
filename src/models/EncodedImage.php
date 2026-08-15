@@ -101,4 +101,26 @@ final class EncodedImage
             $isTemporary,
         );
     }
+
+    /**
+     * Returns a copy with an updated format/MIME (e.g. after PNG→WebP via cwebp).
+     *
+     * @param string $format Output format slug.
+     * @param string $mime MIME type for the new format.
+     *
+     * @return self New instance with format and mime replaced.
+     */
+    public function withFormat(string $format, string $mime): self
+    {
+        return new self(
+            $format,
+            $this->width,
+            $this->height,
+            $this->size,
+            $mime,
+            $this->bytes,
+            $this->path,
+            $this->isTemporary,
+        );
+    }
 }

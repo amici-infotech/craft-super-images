@@ -104,22 +104,22 @@ class OptimizerManager extends Component
     /**
      * Normalize optimizer tool config from string or array form.
      *
-     * @param mixed $value Config value: tool name string, {tool, binary} array, false, or null.
+     * @param mixed $value Config value: tool name string, {tool, binary, arguments} array, false, or null.
      *
-     * @return array{0: ?string, 1: ?string} Tuple of [tool name, optional binary path].
+     * @return array{0: ?string, 1: ?string, 2: list<string>} Tuple of [tool, binary path, CLI arguments].
      */
     public function normalizeToolConfig(mixed $value): array
     {
         if ($value === null || $value === '' || $value === false) {
-            return [null, null];
+            return [null, null, []];
         }
 
         if (is_string($value)) {
-            return [strtolower($value), null];
+            return [strtolower($value), null, []];
         }
 
         if (!is_array($value)) {
-            return [null, null];
+            return [null, null, []];
         }
 
         $tool = isset($value['tool']) && is_string($value['tool']) && $value['tool'] !== ''
@@ -129,7 +129,118 @@ class OptimizerManager extends Component
             ? $value['binary']
             : null;
 
-        return [$tool, $binary];
+        return [$tool, $binary, $this->normalizeArguments($value['arguments'] ?? $value['args'] ?? null)];
+    }
+
+    /**
+     * Normalize configured CLI arguments to a list of strings.
+     *
+     * Accepts:
+     * - whitespace-separated string
+     * - list of tokens: `['--stdout', '--max=85', '{input}']`
+     * - key/value map: `['--stdout' => true, '--max' => 85, '-o' => '{output}', '{input}']`
+     *   - `true` / `''` → flag only (`--stdout`)
+     *   - `false` / `null` → skip
+     *   - other scalar → `flag` + value as two argv tokens (`--max`, `85`)
+     *   - key ending in `=` → single token (`--max=` + `85` → `--max=85`)
+     *   - integer keys → positional token (value only)
+     *   - `'_'` / `'positional'` / `'positionals'` => list of trailing positionals
+     *
+     * @param mixed $value List of args, key/value map, whitespace-separated string, or null.
+     *
+     * @return list<string>
+     */
+    public function normalizeArguments(mixed $value): array
+    {
+        if ($value === null || $value === false || $value === '') {
+            return [];
+        }
+
+        if (is_string($value)) {
+            $value = preg_split('/\s+/', trim($value)) ?: [];
+        }
+
+        if (!is_array($value)) {
+            return [];
+        }
+
+        if ($value === []) {
+            return [];
+        }
+
+        if (array_is_list($value)) {
+            $args = [];
+            foreach ($value as $item) {
+                if (is_string($item) || is_int($item) || is_float($item)) {
+                    $args[] = (string) $item;
+                }
+            }
+
+            return $args;
+        }
+
+        $args = [];
+        foreach ($value as $key => $item) {
+            if (is_int($key)) {
+                if (is_string($item) || is_int($item) || is_float($item)) {
+                    $args[] = (string) $item;
+                }
+                continue;
+            }
+
+            $key = (string) $key;
+            if ($key === '_' || $key === 'positional' || $key === 'positionals') {
+                foreach ((array) $item as $positional) {
+                    if (is_string($positional) || is_int($positional) || is_float($positional)) {
+                        $args[] = (string) $positional;
+                    }
+                }
+                continue;
+            }
+
+            if ($item === false || $item === null) {
+                continue;
+            }
+
+            if ($item === true || $item === '') {
+                $args[] = $key;
+                continue;
+            }
+
+            if (is_array($item)) {
+                foreach ($item as $nested) {
+                    if ($nested === false || $nested === null) {
+                        continue;
+                    }
+                    if ($nested === true || $nested === '') {
+                        $args[] = $key;
+                        continue;
+                    }
+                    if (is_string($nested) || is_int($nested) || is_float($nested)) {
+                        if (str_ends_with($key, '=')) {
+                            $args[] = $key . (string) $nested;
+                        } else {
+                            $args[] = $key;
+                            $args[] = (string) $nested;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if (!is_string($item) && !is_int($item) && !is_float($item)) {
+                continue;
+            }
+
+            if (str_ends_with($key, '=')) {
+                $args[] = $key . (string) $item;
+            } else {
+                $args[] = $key;
+                $args[] = (string) $item;
+            }
+        }
+
+        return $args;
     }
 
     /**

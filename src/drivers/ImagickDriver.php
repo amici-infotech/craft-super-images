@@ -131,8 +131,22 @@ final class ImagickDriver extends AbstractDriver
         $format = $this->normalizeFormat($format);
         $imagick->setImageFormat($format);
 
-        if (in_array($format, ['jpeg', 'jpg', 'webp', 'avif'], true)) {
+        if (in_array($format, ['jpeg', 'jpg'], true)) {
+            $quality = $options->qualityOrDefault(82);
+            $imagick->setImageCompression(Imagick::COMPRESSION_JPEG);
+            $imagick->setImageCompressionQuality($quality);
+        } elseif (in_array($format, ['webp', 'avif'], true)) {
             $imagick->setImageCompressionQuality($options->qualityOrDefault(82));
+        }
+
+        if ($format === 'webp') {
+            $quality = $options->qualityOrDefault(82);
+            // Prefer libwebp-style settings; method 4 matches a solid Imager/cwebp default.
+            $imagick->setOption('webp:method', (string) ($options->extra['method'] ?? 4));
+            $imagick->setOption('webp:alpha-quality', (string) ($options->extra['alphaQuality'] ?? $quality));
+            if (!empty($options->extra['lossless'])) {
+                $imagick->setOption('webp:lossless', 'true');
+            }
         }
 
         if ($options->stripMetadata) {
@@ -191,7 +205,9 @@ final class ImagickDriver extends AbstractDriver
         /** @var Imagick $imagick */
         $imagick = clone $handle->resource;
         [$targetWidth, $targetHeight] = $this->resolveTargetDimensions($handle, $width, $height, $mode);
-        $imagick->resizeImage($targetWidth, $targetHeight, Imagick::FILTER_LANCZOS, 1);
+        // blur < 1 sharpens slightly when downscaling (Imagick docs); tunable via policies.geometry.sharpness.
+        $imagick->resizeImage($targetWidth, $targetHeight, Imagick::FILTER_LANCZOS, $this->sharpness()->blur);
+        $this->sharpenAfterDownscale($imagick, $handle->width, $handle->height, $targetWidth, $targetHeight);
 
         return $this->handleFromImagick($imagick);
     }
@@ -219,7 +235,8 @@ final class ImagickDriver extends AbstractDriver
             $position,
         );
         $imagick->cropImage($cropWidth, $cropHeight, $srcX, $srcY);
-        $imagick->resizeImage($width, $height, Imagick::FILTER_LANCZOS, 1);
+        $imagick->resizeImage($width, $height, Imagick::FILTER_LANCZOS, $this->sharpness()->blur);
+        $this->sharpenAfterDownscale($imagick, $cropWidth, $cropHeight, $width, $height);
 
         return $this->handleFromImagick($imagick);
     }
@@ -577,6 +594,41 @@ final class ImagickDriver extends AbstractDriver
             $height,
             $imagick->getImageAlphaChannel() !== Imagick::ALPHACHANNEL_UNDEFINED,
             $mime,
+        );
+    }
+
+    /**
+     * Applies a light unsharp mask after downscaling to recover edge contrast.
+     *
+     * @param Imagick $imagick Image already resized to the target dimensions.
+     * @param int $sourceWidth Pre-resize width.
+     * @param int $sourceHeight Pre-resize height.
+     * @param int $targetWidth Post-resize width.
+     * @param int $targetHeight Post-resize height.
+     *
+     * @return void
+     */
+    private function sharpenAfterDownscale(
+        Imagick $imagick,
+        int $sourceWidth,
+        int $sourceHeight,
+        int $targetWidth,
+        int $targetHeight,
+    ): void {
+        if ($targetWidth >= $sourceWidth && $targetHeight >= $sourceHeight) {
+            return;
+        }
+
+        $unsharp = $this->sharpness()->unsharp;
+        if ($unsharp === null) {
+            return;
+        }
+
+        $imagick->unsharpMaskImage(
+            $unsharp['radius'],
+            $unsharp['sigma'],
+            $unsharp['amount'],
+            $unsharp['threshold'],
         );
     }
 

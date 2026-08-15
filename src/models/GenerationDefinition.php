@@ -26,6 +26,7 @@ final class GenerationDefinition
      * @param string $driverPreference Configured driver preference (`auto`, `libvips`, etc.).
      * @param string $storageAdapter Storage adapter handle.
      * @param int $schemaVersion Settings schema version included in the identity payload.
+     * @param SharpnessSettings $sharpness Downscale sharpness included in the identity payload.
      */
     public function __construct(
         public readonly string $sourceIdentity,
@@ -38,6 +39,7 @@ final class GenerationDefinition
         public readonly string $driverPreference,
         public readonly string $storageAdapter,
         public readonly int $schemaVersion,
+        public readonly SharpnessSettings $sharpness,
     ) {
     }
 
@@ -58,6 +60,7 @@ final class GenerationDefinition
             'optimizerOptions' => $this->optimizerOptions,
             'driverPreference' => $this->driverPreference,
             'schemaVersion' => $this->schemaVersion,
+            'sharpness' => $this->sharpness->toIdentityArray(),
         ];
     }
 }

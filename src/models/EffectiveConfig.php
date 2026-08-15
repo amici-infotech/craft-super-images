@@ -27,6 +27,7 @@ final class EffectiveConfig
      * @param string $storageAdapter Storage adapter handle to persist the derivative.
      * @param array<string, mixed> $storageConfig Resolved adapter configuration block.
      * @param array<string, mixed> $runtime Signed runtime URL settings and limits.
+     * @param SharpnessSettings $sharpness Downscale blur / unsharp settings for image drivers.
      * @param bool $optimizersEnabled Whether post-encode optimizers should run.
      * @param bool $allowUpscale Whether geometry operations may enlarge beyond source dimensions.
      * @param int $maxSourcePixels Soft cap on source width×height; larger sources are downscaled to fit.
@@ -43,6 +44,7 @@ final class EffectiveConfig
         public readonly string $storageAdapter,
         public readonly array $storageConfig,
         public readonly array $runtime,
+        public readonly SharpnessSettings $sharpness,
         public readonly bool $optimizersEnabled = true,
         public readonly bool $allowUpscale = true,
         public readonly int $maxSourcePixels = 40_000_000,

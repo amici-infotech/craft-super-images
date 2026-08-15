@@ -16,6 +16,7 @@ use amici\SuperImages\models\GenerationRequest;
 use amici\SuperImages\models\OperationDefinition;
 use amici\SuperImages\models\ProfileDefinition;
 use amici\SuperImages\models\Settings;
+use amici\SuperImages\models\SharpnessSettings;
 use amici\SuperImages\models\VariantDefinition;
 use amici\SuperImages\Plugin;
 use craft\base\FieldInterface;
@@ -116,6 +117,7 @@ final class ConfigurationResolver extends Component
             storageAdapter: (string)$storageAdapter,
             storageConfig: $settings->storage,
             runtime: $settings->runtime,
+            sharpness: SharpnessSettings::fromConfig($geometry['sharpness'] ?? 'sharp'),
             optimizersEnabled: (bool)($optimizerOptions['enabled'] ?? true),
             allowUpscale: (bool)($geometry['allowUpscale'] ?? false),
             maxSourcePixels: (int)($safety['maxSourcePixels'] ?? 40_000_000),
@@ -157,6 +159,7 @@ final class ConfigurationResolver extends Component
             driverPreference: $config->driver,
             storageAdapter: $config->storageAdapter,
             schemaVersion: Settings::SCHEMA_VERSION,
+            sharpness: $config->sharpness,
         );
     }
 
