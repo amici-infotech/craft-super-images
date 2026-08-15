@@ -128,6 +128,30 @@ final class LocalStorageAdapter implements StorageAdapterInterface
     }
 
     /**
+     * Reads the full contents of a stored local file.
+     *
+     * @param string $path Relative storage path.
+     *
+     * @return string Raw file bytes.
+     *
+     * @throws StorageException When the file is missing or unreadable.
+     */
+    public function read(string $path): string
+    {
+        $fullPath = $this->fullPath($path);
+        if (!is_file($fullPath) || !is_readable($fullPath)) {
+            throw new StorageException(sprintf('Local storage object is not readable: %s', $path));
+        }
+
+        $contents = file_get_contents($fullPath);
+        if ($contents === false) {
+            throw new StorageException(sprintf('Failed to read local storage object: %s', $path));
+        }
+
+        return $contents;
+    }
+
+    /**
      * Deletes the object at the given relative path when it exists.
      *
      * @param string $path Relative storage path.

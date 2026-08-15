@@ -19,6 +19,7 @@ use amici\SuperImages\models\Settings;
 use amici\SuperImages\models\SharpnessSettings;
 use amici\SuperImages\models\VariantDefinition;
 use amici\SuperImages\Plugin;
+use Craft;
 use craft\base\FieldInterface;
 use craft\models\Volume;
 use craft\models\VolumeFolder;
@@ -49,7 +50,7 @@ final class ConfigurationResolver extends Component
      *
      * @return EffectiveConfig The fully merged configuration for this request.
      *
-     * @throws InvalidConfigurationException When the resolved profile is not defined.
+     * @throws InvalidConfigurationException When the resolved profile or variant is not defined.
      */
     public function resolve(GenerationRequest $request): EffectiveConfig
     {
@@ -78,7 +79,12 @@ final class ConfigurationResolver extends Component
             ?? (array_key_first($profile->variants) !== null ? (string) array_key_first($profile->variants) : 'default');
         $format = strtolower($request->format ?? $settings->defaultFormat);
 
-        $variant = $this->resolveVariant($settings, $profile, $variantName, $request);
+        // Explicit pipelines (e.g. delivery thumbnails) may use a synthetic variant name.
+        if ($request->operationOverrides !== null) {
+            $variant = VariantDefinition::fromArray($variantName, $profile->defaults);
+        } else {
+            $variant = $this->resolveVariant($settings, $profile, $variantName, $request);
+        }
 
         $operations = $this->mergeProfileDefaultOperations($variant->toOperations(), $profile->defaults);
 
@@ -111,7 +117,7 @@ final class ConfigurationResolver extends Component
         $effective = new EffectiveConfig(
             driver: (string)($layer['driver'] ?? $settings->driver),
             profile: $profileName,
-            variant: $variantName,
+            variant: $variant->name,
             format: $format,
             formats: $profile->formats !== [] ? $profile->formats : [$format],
             operations: $operations,
@@ -202,6 +208,8 @@ final class ConfigurationResolver extends Component
      * @param GenerationRequest $request The generation request (unused; reserved for future overrides).
      *
      * @return VariantDefinition The resolved variant with merged profile defaults.
+     *
+     * @throws InvalidConfigurationException When the variant is unknown and no fallback exists.
      */
     private function resolveVariant(
         Settings $settings,
@@ -256,7 +264,57 @@ final class ConfigurationResolver extends Component
             );
         }
 
-        return VariantDefinition::fromArray($variantName, $profile->defaults);
+        $fallbackName = $this->firstAvailableVariantName($settings, $profile);
+        if ($fallbackName === null || $fallbackName === $variantName) {
+            throw new InvalidConfigurationException(sprintf(
+                'Variant "%s" is not defined on profile "%s", and no fallback variant exists.',
+                $variantName,
+                $profile->name,
+            ));
+        }
+
+        Craft::warning(sprintf(
+            'Variant "%s" is not defined on profile "%s"; falling back to "%s".',
+            $variantName,
+            $profile->name,
+            $fallbackName,
+        ), 'super-images');
+
+        return $this->resolveVariant($settings, $profile, $fallbackName, $request);
+    }
+
+    /**
+     * First named variant or transform on the profile (global variants included).
+     *
+     * @param Settings $settings Plugin settings.
+     * @param ProfileDefinition $profile Active profile.
+     *
+     * @return string|null Fallback variant handle, or null when nothing is defined.
+     */
+    private function firstAvailableVariantName(Settings $settings, ProfileDefinition $profile): ?string
+    {
+        if ($profile->variants !== []) {
+            $first = array_key_first($profile->variants);
+
+            return $first !== null ? (string) $first : null;
+        }
+
+        if ($settings->variants !== []) {
+            $first = array_key_first($settings->variants);
+
+            return $first !== null ? (string) $first : null;
+        }
+
+        if ($profile->transforms !== []) {
+            $first = $profile->transforms[0] ?? null;
+            if (is_array($first) && is_string($first['name'] ?? null)) {
+                return $first['name'];
+            }
+
+            return '0';
+        }
+
+        return null;
     }
 
     /**

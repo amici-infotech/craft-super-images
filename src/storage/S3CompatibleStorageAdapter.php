@@ -165,6 +165,38 @@ final class S3CompatibleStorageAdapter implements StorageAdapterInterface
     }
 
     /**
+     * Downloads the full contents of a stored remote object.
+     *
+     * @param string $path Relative storage path.
+     *
+     * @return string Raw file bytes.
+     *
+     * @throws StorageException When the object cannot be fetched.
+     */
+    public function read(string $path): string
+    {
+        try {
+            $result = $this->_client->getObject([
+                'Bucket' => $this->_bucket,
+                'Key' => $this->key($path),
+            ]);
+        } catch (\Throwable $exception) {
+            throw new StorageException(
+                sprintf('Failed to read S3 storage object "%s": %s', $path, $exception->getMessage()),
+                0,
+                $exception,
+            );
+        }
+
+        $body = $result['Body'] ?? null;
+        if ($body === null) {
+            throw new StorageException(sprintf('S3 storage object has empty body: %s', $path));
+        }
+
+        return (string) $body;
+    }
+
+    /**
      * Deletes the object at the given relative path from the bucket.
      *
      * @param string $path Relative storage path.

@@ -162,6 +162,10 @@ return [
     'optimizers' => [
         // Master switch for all binary optimizers.
         'enabled' => true,
+        // job = write first, optimize via Craft queue (faster first paint; Imager-style)
+        // runtime = optimize before the URL is served
+        // cwebp/avifenc always run during generate (format conversion, not post-optimize).
+        'optimizeType' => 'job',
         // Absolute paths or command names. Prefer env vars on each server.
         // Typical Ubuntu paths: /usr/bin/jpegoptim, /usr/bin/cwebp, …
         'binaries' => [

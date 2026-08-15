@@ -244,6 +244,32 @@ class OptimizerManager extends Component
     }
 
     /**
+     * Whether the tool is a format converter (must run during encode), not a post-optimizer.
+     *
+     * @param string|null $tool Tool slug.
+     *
+     * @return bool True for cwebp / avifenc.
+     */
+    public function isExternalEncoder(?string $tool): bool
+    {
+        return in_array(strtolower((string) $tool), ['cwebp', 'avifenc'], true);
+    }
+
+    /**
+     * Whether post-optimizers should run via Craft queue after the file is stored.
+     *
+     * @param array<string, mixed> $optimizerConfig Full `optimizers` settings block.
+     *
+     * @return bool True when optimizeType is `job`.
+     */
+    public function shouldDeferPostOptimize(array $optimizerConfig): bool
+    {
+        $type = strtolower((string) ($optimizerConfig['optimizeType'] ?? 'job'));
+
+        return $type === 'job';
+    }
+
+    /**
      * Return the shared null optimizer passthrough instance.
      *
      * @return NullOptimizer The no-op optimizer.
@@ -258,7 +284,7 @@ class OptimizerManager extends Component
      *
      * @return BinaryOptimizer The external-binary optimizer.
      */
-    private function binaryOptimizer(): BinaryOptimizer
+    public function binaryOptimizer(): BinaryOptimizer
     {
         return $this->_binaryOptimizer ??= new BinaryOptimizer();
     }

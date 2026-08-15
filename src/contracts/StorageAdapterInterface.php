@@ -49,6 +49,18 @@ interface StorageAdapterInterface
     public function writeFile(string $path, string $localFile, StorageWriteOptions $options = new StorageWriteOptions()): StorageObject;
 
     /**
+     * Reads the full contents of a stored derivative.
+     *
+     * Used by deferred optimizer jobs to download (or open) an already-written file,
+     * optimize it, and overwrite the same path.
+     *
+     * @param string $path Relative storage path.
+     *
+     * @return string Raw file bytes.
+     */
+    public function read(string $path): string;
+
+    /**
      * Checks whether a derivative already exists at the given path.
      *
      * @param string $path Relative storage path to check.

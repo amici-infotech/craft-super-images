@@ -55,6 +55,7 @@ class ProcessRunner extends Component
         $stdout = '';
         $stderr = '';
         $start = microtime(true);
+        $exitCode = -1;
 
         while (true) {
             $stdout .= stream_get_contents($pipes[1]) ?: '';
@@ -63,6 +64,8 @@ class ProcessRunner extends Component
             $status = proc_get_status($process);
 
             if (!$status['running']) {
+                // Must capture here: after the process reaps, proc_close()'s code is unreliable.
+                $exitCode = (int) $status['exitcode'];
                 break;
             }
 
@@ -82,8 +85,7 @@ class ProcessRunner extends Component
 
         fclose($pipes[1]);
         fclose($pipes[2]);
-
-        $exitCode = proc_close($process);
+        proc_close($process);
 
         return [
             'exitCode' => $exitCode,

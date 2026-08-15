@@ -16,6 +16,24 @@ Storage writes the final object
 
 **Optimizers** are optional external binaries. Configure which tool runs per format, binary paths, and custom CLI arguments.
 
+### `optimizeType` (Imager-style)
+
+```php
+'optimizers' => [
+    'enabled' => true,
+    // job     = serve the file first; jpegoptim/optipng/etc. overwrite later via Craft queue
+    // runtime = block until post-optimize finishes (useful for debugging)
+    'optimizeType' => 'job',
+    'jpeg' => 'jpegoptim',
+    'png' => 'optipng',
+    'webp' => 'cwebp', // format converter — always runs during generate
+],
+```
+
+Same-format post-optimizers (`jpegoptim`, `optipng`, `oxipng`, `pngquant`) can be deferred. Format converters (`cwebp`, `avifenc`) always run during generation so the stored object is already the correct type.
+
+With `job`, the page can return storage URLs as soon as resize/encode finishes. The queue then reads the stored object (local disk or S3 download), optimizes, and overwrites the **same path/URL**.
+
 ---
 
 ## Encoder options

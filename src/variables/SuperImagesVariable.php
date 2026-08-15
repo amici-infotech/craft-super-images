@@ -103,16 +103,16 @@ class SuperImagesVariable
      * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
      * @param array<string, mixed> $options Generation and HTML attribute options.
      *
-     * @return Markup Safe HTML markup for the `<img>` tag, or an error `<div>` on failure.
+     * @return Markup Safe HTML markup for the `<img>` tag (empty when planning fails).
      */
     public function img(Asset|string|int $source, array $options = []): Markup
     {
         try {
             $planned = $this->plan($source, $options);
         } catch (SuperImagesException $exception) {
-            $message = Html::encode($exception->getMessage());
+            Craft::warning($exception->getMessage(), 'super-images');
 
-            return new Markup('<div class="error">Skipped: ' . $message . '</div>', 'UTF-8');
+            return new Markup('', 'UTF-8');
         }
 
         [$width, $height] = $this->resolveLayoutDimensions($source, $planned);

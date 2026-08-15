@@ -12,6 +12,7 @@ use amici\SuperImages\contracts\OptimizerInterface;
 use amici\SuperImages\exceptions\OptimizerUnavailableException;
 use amici\SuperImages\models\EncodedImage;
 use amici\SuperImages\Plugin;
+use Craft;
 
 /**
  * Binary Optimizer
@@ -91,29 +92,99 @@ class BinaryOptimizer implements OptimizerInterface
         $result = $processRunner->run($command);
 
         if ($result['exitCode'] !== 0) {
-            // Optional optimizer failure should not hard-fail the pipeline unless forced.
+            Craft::warning(sprintf(
+                'Optimizer %s exited %d: %s',
+                $tool,
+                $result['exitCode'],
+                trim($result['stderr'] !== '' ? $result['stderr'] : $result['stdout']),
+            ), 'super-images');
+
             return $encoded;
         }
 
-        $finalPath = $output;
+        $finalPath = $this->resolveOptimizedPath($tool, $input, $output, $result, $options);
 
-        if ($tool === 'jpegoptim') {
-            // Default recipe uses --stdout; custom arguments may write in-place or to {output}.
-            if ($result['stdout'] !== '') {
-                file_put_contents($output, $result['stdout']);
-                $finalPath = $output;
-            } elseif (is_readable($output) && filesize($output) > 0) {
-                $finalPath = $output;
-            } elseif (is_readable($input)) {
-                $finalPath = $input;
-            }
-        }
+        if ($finalPath === null || !is_readable($finalPath) || filesize($finalPath) === 0) {
+            Craft::warning(sprintf(
+                'Optimizer %s produced no readable output (stdout=%d bytes).',
+                $tool,
+                strlen($result['stdout']),
+            ), 'super-images');
 
-        if (!is_readable($finalPath) || filesize($finalPath) === 0) {
             return $encoded;
         }
 
         return $encoded->withPath($finalPath, (int) filesize($finalPath), true);
+    }
+
+    /**
+     * Pick the filesystem path that holds optimized bytes after a successful run.
+     *
+     * @param string $tool Optimizer tool slug.
+     * @param string $input Input path passed to the tool.
+     * @param string $output Intended output path (may be unused for in-place tools).
+     * @param array{exitCode: int, stdout: string, stderr: string} $result Process result.
+     * @param array<string, mixed> $options Original optimize options (detects `--stdout`).
+     *
+     * @return string|null Absolute path, or null when optimization did not produce a file.
+     */
+    private function resolveOptimizedPath(
+        string $tool,
+        string $input,
+        string $output,
+        array $result,
+        array $options = [],
+    ): ?string {
+        if ($tool === 'jpegoptim') {
+            // Default recipe is in-place (`-s`). jpegoptim still prints a human status
+            // line on stdout — that must NOT be written as the image (was ~100 bytes of text).
+            $usesStdout = $this->commandUsesStdout($options);
+
+            if ($usesStdout) {
+                if ($result['stdout'] === '' || !$this->looksLikeJpeg($result['stdout'])) {
+                    return null;
+                }
+                file_put_contents($output, $result['stdout']);
+
+                return is_readable($output) && filesize($output) > 0 ? $output : null;
+            }
+
+            return is_readable($input) && filesize($input) > 0 ? $input : null;
+        }
+
+        if (is_readable($output) && filesize($output) > 0) {
+            return $output;
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether custom arguments request JPEG bytes on stdout.
+     *
+     * @param array<string, mixed> $options Optimize options.
+     *
+     * @return bool True when `--stdout` is present in custom arguments.
+     */
+    private function commandUsesStdout(array $options): bool
+    {
+        $custom = Plugin::getInstance()->getOptimizerManager()->normalizeArguments(
+            $options['arguments'] ?? $options['args'] ?? null,
+        );
+
+        return in_array('--stdout', $custom, true) || in_array('-stdout', $custom, true);
+    }
+
+    /**
+     * Cheap magic-byte check so we never persist jpegoptim's text status as an image.
+     *
+     * @param string $bytes Candidate payload.
+     *
+     * @return bool True when payload starts with a JPEG SOI marker.
+     */
+    private function looksLikeJpeg(string $bytes): bool
+    {
+        return str_starts_with($bytes, "\xFF\xD8\xFF");
     }
 
     /**
@@ -151,7 +222,15 @@ class BinaryOptimizer implements OptimizerInterface
         }
 
         return match ($tool) {
-            'jpegoptim' => [$binary, '--stdout', '--strip-all', $input],
+            // In-place strip/optimize (same approach as Imager). Avoid --stdout so we
+            // never depend on capturing binary JPEG data from process pipes.
+            'jpegoptim' => array_values(array_filter([
+                $binary,
+                '-s',
+                '--strip-all',
+                isset($options['quality']) ? '--max=' . (int) $options['quality'] : null,
+                $input,
+            ], static fn(mixed $v): bool => $v !== null && $v !== '')),
             'oxipng' => [$binary, '-o', '2', '--out', $output, $input],
             'optipng' => [$binary, '-out', $output, $input],
             'pngquant' => [$binary, '--force', '--output', $output, $input],

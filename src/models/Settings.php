@@ -122,6 +122,13 @@ class Settings extends Model
     public array $optimizers = [
         'enabled' => true,
         /**
+         * When to run same-format post-optimizers (jpegoptim, optipng, …):
+         * - job     = write file first, optimize via Craft queue (faster page load; Imager default)
+         * - runtime = optimize during the generate request before serving
+         * Format converters (cwebp / avifenc) always run during generate.
+         */
+        'optimizeType' => 'job',
+        /**
          * Absolute paths (or env-resolved paths) for external tools.
          * Tool names alone are resolved via PATH when omitted.
          */

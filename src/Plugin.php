@@ -22,9 +22,11 @@ use craft\events\ModelEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\helpers\UrlHelper;
+use craft\log\MonologTarget;
 use craft\services\UserPermissions;
 use craft\web\twig\variables\CraftVariable;
 use craft\web\UrlManager;
+use Psr\Log\LogLevel;
 use yii\base\Event;
 
 /**
@@ -89,6 +91,7 @@ class Plugin extends CraftPlugin
         $this->_registerAssetEvents();
         $this->_registerCpRoutes();
         $this->_registerPermissions();
+        $this->_registerLogTarget();
 
         Craft::info(
             Craft::t('super-images', '{name} plugin loaded', ['name' => $this->name]),
@@ -294,5 +297,21 @@ class Plugin extends CraftPlugin
                 ];
             }
         );
+    }
+
+    /**
+     * Write category `super-images` warnings/errors to storage/logs/super-images.log.
+     *
+     * @return void
+     */
+    private function _registerLogTarget(): void
+    {
+        Craft::getLogger()->dispatcher->targets[] = new MonologTarget([
+            'name' => 'super-images',
+            'categories' => ['super-images'],
+            'level' => LogLevel::INFO,
+            'logContext' => false,
+            'allowLineBreaks' => false,
+        ]);
     }
 }

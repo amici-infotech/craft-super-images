@@ -13,6 +13,7 @@ use amici\SuperImages\drivers\AbstractDriver;
 use amici\SuperImages\events\GenerationEvent;
 use amici\SuperImages\exceptions\ProcessingException;
 use amici\SuperImages\exceptions\SourceException;
+use amici\SuperImages\jobs\OptimizeDerivativeJob;
 use amici\SuperImages\models\EffectiveConfig;
 use amici\SuperImages\models\EncodedImage;
 use amici\SuperImages\models\EncodeOptions;
@@ -25,6 +26,7 @@ use amici\SuperImages\models\OperationDefinition;
 use amici\SuperImages\models\SourceImage;
 use amici\SuperImages\models\StorageWriteOptions;
 use amici\SuperImages\Plugin;
+use Craft;
 use yii\base\Component;
 
 /**
@@ -366,6 +368,7 @@ class GenerationService extends Component
             // Only route through PNG→cwebp/avifenc when the binary is actually callable.
             // Otherwise we used to write a PNG and rename it .webp (~MB files).
             $externalEncoder = null;
+            $deferPostOptimize = false;
             if (
                 $config->optimizersEnabled
                 && in_array($formatKey, ['webp', 'avif'], true)
@@ -439,18 +442,29 @@ class GenerationService extends Component
                     $config->optimizersEnabled,
                 );
                 // Never run cwebp/avifenc as a "post-optimizer" on already-lossy output.
-                if (!in_array($optimizerTool, ['cwebp', 'avifenc'], true)) {
-                    $encoded = $optimizer->optimize(
-                        $encoded,
-                        $definition->format,
-                        $this->buildOptimizerOptions(
-                            $optimizerTool,
-                            $optimizerBinary,
-                            $definition->encodeOptions->quality,
-                            null,
-                            $cliArguments,
-                        ),
-                    );
+                // Post-optimizers (jpegoptim, etc.) may be deferred to the queue.
+                if (
+                    $config->optimizersEnabled
+                    && $optimizerTool !== null
+                    && $optimizerTool !== ''
+                    && !$plugin->getOptimizerManager()->isExternalEncoder($optimizerTool)
+                    && $optimizer->name() !== 'null'
+                ) {
+                    if ($plugin->getOptimizerManager()->shouldDeferPostOptimize($definition->optimizerOptions)) {
+                        $deferPostOptimize = true;
+                    } else {
+                        $encoded = $optimizer->optimize(
+                            $encoded,
+                            $definition->format,
+                            $this->buildOptimizerOptions(
+                                $optimizerTool,
+                                $optimizerBinary,
+                                $definition->encodeOptions->quality,
+                                null,
+                                $cliArguments,
+                            ),
+                        );
+                    }
                 }
             }
 
@@ -465,6 +479,23 @@ class GenerationService extends Component
             $storageObject = $encoded->hasPath()
                 ? $adapter->writeFile($storagePath, (string) $encoded->path, $writeOptions)
                 : $adapter->write($storagePath, (string) $encoded->bytes, $writeOptions);
+
+            if ($deferPostOptimize && !$request->preview) {
+                $resolvedBinary = $plugin->getBinaryResolver()->resolve(
+                    (string) $optimizerTool,
+                    $optimizerBinary,
+                );
+                $this->enqueuePostOptimize(
+                    storageAdapter: $definition->storageAdapter,
+                    storagePath: $storageObject->path,
+                    format: $definition->format,
+                    mime: $encoded->mime,
+                    tool: (string) $optimizerTool,
+                    binary: $resolvedBinary,
+                    quality: $definition->encodeOptions->quality,
+                    arguments: $cliArguments,
+                );
+            }
 
             if ($adapter->capabilities()->remote && !$request->preview) {
                 $markerMetadata = [
@@ -505,7 +536,7 @@ class GenerationService extends Component
                     'profile' => $definition->profile,
                     'variant' => $definition->variant,
                     'preview' => $request->preview,
-                    'optimizer' => $optimizer->name(),
+                    'optimizer' => $deferPostOptimize ? 'deferred' : $optimizer->name(),
                     'adapter' => $adapter->name(),
                 ],
             );
@@ -617,6 +648,42 @@ class GenerationService extends Component
         if ($request->sourceCount() !== 1) {
             throw new SourceException('Generation request must include exactly one of assetId, localPath, or remoteUrl.');
         }
+    }
+
+    /**
+     * Queue a post-encode optimizer job that overwrites the stored derivative in place.
+     *
+     * @param string $storageAdapter Adapter handle.
+     * @param string $storagePath Relative storage path.
+     * @param string $format Format slug.
+     * @param string $mime Content type.
+     * @param string $tool Optimizer tool slug.
+     * @param string|null $binary Optional binary path.
+     * @param int|null $quality Optional quality hint.
+     * @param list<string> $arguments Custom CLI arguments.
+     *
+     * @return void
+     */
+    private function enqueuePostOptimize(
+        string $storageAdapter,
+        string $storagePath,
+        string $format,
+        string $mime,
+        string $tool,
+        ?string $binary,
+        ?int $quality,
+        array $arguments,
+    ): void {
+        Craft::$app->getQueue()->push(new OptimizeDerivativeJob([
+            'storageAdapter' => $storageAdapter,
+            'storagePath' => $storagePath,
+            'format' => $format,
+            'mime' => $mime,
+            'tool' => $tool,
+            'binary' => $binary,
+            'quality' => $quality,
+            'arguments' => $arguments,
+        ]));
     }
 
     /**
