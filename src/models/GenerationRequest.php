@@ -27,6 +27,8 @@ final class GenerationRequest
      * @param string|null $variant Variant handle within the profile.
      * @param string|null $format Output format slug; falls back to plugin default when null.
      * @param list<OperationDefinition>|null $operationOverrides Explicit transform pipeline replacing variant defaults.
+     * @param array<string, mixed> $encodeOverrides Merged into resolved encoder options (e.g. thumbnail quality).
+     * @param bool|null $optimizersEnabled Override post-encode optimizers; null keeps settings default.
      * @param Volume|null $volume Volume context for volume-scoped config overrides.
      * @param VolumeFolder|null $folder Folder context for folder-scoped config overrides.
      * @param FieldInterface|null $field Field context for field-scoped config overrides.
@@ -41,6 +43,8 @@ final class GenerationRequest
         public readonly ?string $variant = null,
         public readonly ?string $format = null,
         public readonly ?array $operationOverrides = null,
+        public readonly array $encodeOverrides = [],
+        public readonly ?bool $optimizersEnabled = null,
         public readonly ?Volume $volume = null,
         public readonly ?VolumeFolder $folder = null,
         public readonly ?FieldInterface $field = null,

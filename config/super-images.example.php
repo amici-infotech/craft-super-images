@@ -25,12 +25,19 @@ return [
     // auto picks the best available driver on the server.
     'driver' => 'auto',
 
-    // How Twig delivery URLs are emitted.
-    // lazy   = signed runtime generate URL (generate on first request)
-    // eager  = final storage/CDN URL (pre-generate via CLI/queue)
-    // hybrid = currently same as eager (reserved for later overrides)
+    // Delivery — same idea as Craft generateTransformsBeforePageLoad.
+    // true  = create missing files during the page request, then serve storage URLs
+    // false = serve a signed action URL when missing (requires runtime.enabled)
+    // Omit generateBeforePageLoad to mirror Craft's general config setting.
     'delivery' => [
-        'mode' => 'lazy',
+        'generateBeforePageLoad' => true,
+        'thumbnail' => [
+            'enabled' => true,
+            'width' => 32,
+            'format' => 'jpg',
+            'quality' => 50,
+            'variant' => 'thumb',
+        ],
     ],
 
     // Automatic eager generation when Craft Assets are saved.
@@ -78,9 +85,9 @@ return [
         ],
     ],
 
-    // Signed lazy-generation endpoint settings.
+    // Signed deferred-generation endpoint settings.
     'runtime' => [
-        // Allow /actions/super-images/runtime/generate
+        // Used when generateBeforePageLoad is false.
         'enabled' => true,
         // HMAC secret for signed URLs. Falls back to Craft securityKey when null/empty.
         'signingSecret' => App::env('SUPER_IMAGES_SIGNING_SECRET'),
@@ -253,7 +260,7 @@ return [
         'geometry' => [
             // When false, output never exceeds source dimensions (small sources stay small).
             'allowUpscale' => false,
-            // Downscale sharpness vs Imager/Craft. Presets: soft | normal | sharp | extra
+            // Downscale sharpness presets: soft | normal | sharp | extra
             // Or override: ['preset' => 'sharp', 'blur' => 0.82, 'unsharp' => [...|false]]
             'sharpness' => 'sharp',
         ],

@@ -60,13 +60,30 @@ class Settings extends Model
         ],
     ];
 
-    /** @var array<string, mixed> URL delivery mode (`eager`, `lazy`, or `hybrid`). */
+    /** @var array<string, mixed> Delivery behaviour (Craft-style before-page-load + thumbnails). */
     public array $delivery = [
-        'mode' => 'lazy', // eager|lazy|hybrid — eager/hybrid emit storage URLs; lazy emits signed runtime URLs
+        /**
+         * Like Craft's generateTransformsBeforePageLoad:
+         * true  = generate missing files during Twig, emit storage URLs
+         * false = emit signed runtime action URLs when missing (requires runtime.enabled)
+         * Omit to mirror Craft::$app->config->general->generateTransformsBeforePageLoad.
+         */
+        'generateBeforePageLoad' => true,
+        /**
+         * Tiny immediate `src` for picture() while full srcset / `<source>` URLs load.
+         */
+        'thumbnail' => [
+            'enabled' => true,
+            'width' => 32,
+            'format' => 'jpg',
+            'quality' => 50,
+            'variant' => 'thumb',
+        ],
     ];
 
     /** @var array<string, mixed> Signed runtime URL generation limits and secrets. */
     public array $runtime = [
+        /** Required when generateBeforePageLoad is false. */
         'enabled' => true,
         /** @var string|null Falls back to Craft security key when null. */
         'signingSecret' => null,

@@ -1,29 +1,28 @@
 # Runtime delivery
 
-## Lazy mode flow
+Super Images mirrors Craft’s `generateTransformsBeforePageLoad`.
 
-```text
-Twig emits signed URL
-        ↓
-Browser requests /actions/super-images/runtime/generate?...
-        ↓
-Verify signature + expiry + limits
-        ↓
-Acquire generation lock (single-flight)
-        ↓
-Skip if already stored / marker exists
-        ↓
-GenerationService
-        ↓
-302 → final storage/CDN URL
+## `generateBeforePageLoad`
+
+```php
+'delivery' => [
+    // true  = generate missing files during Twig, emit storage/CDN URLs
+    // false = emit signed action URL when missing (browser hits runtime endpoint)
+    // omit  = use Craft::$app->config->general->generateTransformsBeforePageLoad
+    'generateBeforePageLoad' => true,
+],
 ```
 
-Controller: `RuntimeController::actionGenerate`  
-Anonymous access is allowed; authorization is the HMAC signature.
+| Setting | Missing file | URL in HTML |
+|---|---|---|
+| `true` | Generated **during the page request** | Storage/CDN URL |
+| `false` | Generated when the browser hits the action | `/actions/super-images/runtime/generate?...` |
+
+If the file already exists, Twig always emits the storage URL.
 
 ---
 
-## Signing
+## Runtime endpoint (only when `generateBeforePageLoad` is false)
 
 ```php
 'runtime' => [
@@ -36,15 +35,36 @@ Anonymous access is allowed; authorization is the HMAC signature.
 ],
 ```
 
-If `signingSecret` is empty, Craft’s `securityKey` is used.
+Flow when deferred:
 
-Signed params include exactly one source (`assetId` **or** `localPath` **or** `remoteUrl`) plus `profile`, `variant`, `format`, `exp`, `sig`.
+```text
+Twig emits signed URL
+        ↓
+Browser requests /actions/super-images/runtime/generate?...
+        ↓
+Verify signature → generate → 302 → storage URL
+```
+
+If `runtime.enabled` is false and `generateBeforePageLoad` is also false, Super Images still sync-generates so templates do not 404.
 
 ---
 
-## Eager / hybrid
+## Thumbnail `src`
 
-With `delivery.mode = eager` (or current `hybrid`), Twig emits the final storage URL directly. Ensure derivatives are pre-generated (CLI/queue/autoGenerate) or the URL may 404 until generated elsewhere.
+`picture()` can put a tiny server-generated storage URL in `<img src>` while full candidates stay in `srcset` / `<source>`. See [Twig](./twig.md#thumbnail-placeholder-src).
+
+```php
+'delivery' => [
+    'generateBeforePageLoad' => true,
+    'thumbnail' => [
+        'enabled' => true,
+        'width' => 32,
+        'format' => 'jpg',
+        'quality' => 50,
+        'variant' => 'thumb',
+    ],
+],
+```
 
 ---
 

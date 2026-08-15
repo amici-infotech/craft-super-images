@@ -13,7 +13,7 @@ use yii\base\Component;
 /**
  * Storage Path Builder
  *
- * Constructs readable, Imager-X-style storage paths:
+ * Constructs readable, folder-grouped storage paths:
  *
  *     {folderHash}/{assetId}/{basename}-{variant}.{ext}
  *
@@ -90,9 +90,9 @@ final class StoragePathBuilder extends Component
     }
 
     /**
-     * Build an Imager-style folder hash from a volume folder path.
+     * Build a stable folder hash from a volume folder path.
      *
-     * Mirrors Imager-X `hashPath` behaviour: `md5('/' . folderPath)`.
+     * Uses `md5('/' . folderPath)` so all assets in the same folder share a prefix.
      *
      * @param string $folderPath Asset folder path relative to the volume (may be empty).
      * @param string|null $volumeHandle Optional volume handle when volume should be part of the hash.

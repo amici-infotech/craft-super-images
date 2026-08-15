@@ -62,7 +62,7 @@ Fine-tune without changing the preset name in the identity hash base:
 ],
 ```
 
-Changing sharpness regenerates derivatives (included in the generation identity). Prefer Imagick (or libvips) over GD for results closest to Craft/Imager.
+Changing sharpness regenerates derivatives (included in the generation identity). Prefer Imagick (or libvips) over GD for the sharpest downscales.
 
 For WebP via `cwebp`, also see [Encoders & optimizers](./encoders-optimizers.md) (`method`, `-sharp_yuv`, custom `arguments`).
 

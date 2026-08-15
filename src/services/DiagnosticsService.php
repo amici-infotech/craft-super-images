@@ -33,7 +33,7 @@ class DiagnosticsService extends Component
     /** Doctor check group: derivative storage and temp paths. */
     public const GROUP_STORAGE = 'storage';
 
-    /** Doctor check group: delivery mode and runtime signing. */
+    /** Doctor check group: before-page-load delivery and runtime signing. */
     public const GROUP_DELIVERY = 'delivery';
 
     /** Doctor check group: Craft queue job counts. */
@@ -304,7 +304,7 @@ class DiagnosticsService extends Component
                 : sprintf('Fix permissions on Craft runtime temp: `sudo chown -R www-data:www-data %s`.', $tempPath),
         );
 
-        $deliveryMode = (string) ($settings->delivery['mode'] ?? 'lazy');
+        $beforePageLoad = $plugin->getDeliveryUrls()->generatesBeforePageLoad();
         $runtimeEnabled = (bool) ($settings->runtime['enabled'] ?? true);
         $signingSecret = $settings->runtime['signingSecret'] ?? null;
         $hasSigning = is_string($signingSecret) && $signingSecret !== ''
@@ -313,23 +313,20 @@ class DiagnosticsService extends Component
         $checks[] = $this->check(
             'delivery-mode',
             self::GROUP_DELIVERY,
-            in_array($deliveryMode, ['eager', 'lazy', 'hybrid'], true) ? 'pass' : 'fail',
-            'Mode',
-            $deliveryMode,
-            in_array($deliveryMode, ['eager', 'lazy', 'hybrid'], true)
-                ? null
-                : 'Set `delivery.mode` to `lazy`, `eager`, or `hybrid` in `config/super-images.php`.',
+            'pass',
+            'Generate before page load',
+            $beforePageLoad ? 'true (sync during Twig)' : 'false (runtime action URL when missing)',
         );
 
-        if (in_array($deliveryMode, ['lazy', 'hybrid'], true)) {
+        if (!$beforePageLoad) {
             if (!$runtimeEnabled) {
                 $checks[] = $this->check(
                     'runtime-signing',
                     self::GROUP_DELIVERY,
-                    'fail',
+                    'warn',
                     'Runtime signing',
-                    sprintf('Required for "%s" mode, but runtime generation is disabled.', $deliveryMode),
-                    'Set `runtime.enabled => true`, or switch `delivery.mode` to `eager` and pre-generate via CLI/queue.',
+                    'generateBeforePageLoad is false and runtime is disabled; missing files sync-generate during Twig as fallback.',
+                    'Set `runtime.enabled => true` for action URLs, or `delivery.generateBeforePageLoad => true`.',
                 );
             } elseif (!$hasSigning) {
                 $checks[] = $this->check(
@@ -358,7 +355,7 @@ class DiagnosticsService extends Component
                 self::GROUP_DELIVERY,
                 'pass',
                 'Runtime signing',
-                'Not required for eager mode.',
+                'Not required when generateBeforePageLoad is true.',
             );
         }
 
@@ -484,7 +481,7 @@ class DiagnosticsService extends Component
 
         return [
             'enabled' => $settings->enabled,
-            'deliveryMode' => $settings->delivery['mode'] ?? 'lazy',
+            'generateBeforePageLoad' => $plugin->getDeliveryUrls()->generatesBeforePageLoad(),
             'defaultProfile' => $settings->defaultProfile,
             'defaultFormat' => $settings->defaultFormat,
             'driver' => $settings->driver,

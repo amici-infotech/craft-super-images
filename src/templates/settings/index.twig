@@ -184,7 +184,10 @@
             </div>
             <div class="si-settings__metric">
                 <span class="si-settings__metric-label">{{ "Delivery"|t('super-images') }}</span>
-                <span class="si-settings__metric-value">{{ settings.delivery.mode ?? 'lazy' }}</span>
+                <span class="si-settings__metric-value">
+                    {% set beforePageLoad = settings.delivery.generateBeforePageLoad ?? craft.app.config.general.generateTransformsBeforePageLoad %}
+                    {{ beforePageLoad ? 'before page load'|t('super-images') : 'runtime URL'|t('super-images') }}
+                </span>
                 <span class="si-settings__metric-meta">{{ "driver"|t('super-images') }}: {{ settings.driver }}</span>
             </div>
             <div class="si-settings__metric">
@@ -237,8 +240,8 @@
                         <dd><code>{{ settings.driver }}</code></dd>
                     </div>
                     <div class="si-settings__row">
-                        <dt>{{ "Delivery mode"|t('super-images') }}</dt>
-                        <dd><code>{{ settings.delivery.mode ?? 'lazy' }}</code></dd>
+                        <dt>{{ "Generate before page load"|t('super-images') }}</dt>
+                        <dd><code>{{ (settings.delivery.generateBeforePageLoad ?? craft.app.config.general.generateTransformsBeforePageLoad) ? 'true' : 'false' }}</code></dd>
                     </div>
                 </dl>
             </div>

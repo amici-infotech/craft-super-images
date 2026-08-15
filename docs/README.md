@@ -61,7 +61,9 @@ Set environment variables for secrets and Ubuntu binary paths (see [Encoders & o
 {{ craft.superImages.picture(asset, { profile: 'responsive', formats: ['webp', 'jpg'], sizes: '100vw' }) }}
 ```
 
-With `delivery.mode = lazy`, these emit signed runtime URLs. The first browser hit generates the derivative and redirects to storage.
+With `delivery.generateBeforePageLoad = true` (or Craft’s matching setting), Twig generates missing files and emits storage URLs.
+
+With `generateBeforePageLoad = false`, Twig emits signed runtime URLs for missing files; the first browser hit generates and redirects to storage.
 
 ### CLI (eager)
 
@@ -95,11 +97,10 @@ Derivative paths are derived from a stable identity hash. There is **no** `Gener
 
 | Mode | Twig emits |
 |---|---|
-| `lazy` (default) | Signed `/actions/super-images/runtime/generate?...` |
-| `eager` | Final storage/CDN URL |
-| `hybrid` | Storage URL today (same as eager) |
+| `generateBeforePageLoad` true | Storage URL (generate during Twig if missing) |
+| `generateBeforePageLoad` false | Signed `/actions/super-images/runtime/generate?...` when missing |
 
-Normal Twig render never checks storage existence, markers, or remote HEAD.
+When the file already exists, Twig always emits the storage URL.
 
 ---
 

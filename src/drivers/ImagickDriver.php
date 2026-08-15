@@ -141,7 +141,7 @@ final class ImagickDriver extends AbstractDriver
 
         if ($format === 'webp') {
             $quality = $options->qualityOrDefault(82);
-            // Prefer libwebp-style settings; method 4 matches a solid Imager/cwebp default.
+            // Prefer libwebp-style settings; method 4 is a solid cwebp default.
             $imagick->setOption('webp:method', (string) ($options->extra['method'] ?? 4));
             $imagick->setOption('webp:alpha-quality', (string) ($options->extra['alphaQuality'] ?? $quality));
             if (!empty($options->extra['lossless'])) {

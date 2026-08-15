@@ -1,25 +1,24 @@
 # Twig & frontend
 
-Normal template render **plans URLs only**. It must not process images, check derivative existence, or touch existence markers.
-
 Use the **variable API** only (`craft.superImages`). Twig filters are not provided.
+
+With `generateBeforePageLoad = true`, missing derivatives are created during the page request (same idea as Craft transforms). With `false`, Twig emits signed action URLs and generation happens on the first browser hit.
 
 ---
 
 ## Variable API (`craft.superImages`)
 
 ```twig
-{# Delivery URL (lazy signed or eager storage, per delivery.mode) #}
+{# Delivery URL (storage URL, or signed action URL when generateBeforePageLoad is false) #}
 {{ craft.superImages.url(asset, { profile: 'responsive', variant: 'md', format: 'webp' }) }}
 
-{# <img> #}
+{# <img> — one derivative, single src (no srcset). Default variant is the first/profile default. #}
 {{ craft.superImages.img(asset, {
     profile: 'responsive',
     variant: 'md',
     format: 'webp',
     alt: entry.title,
-    class: 'thumb',
-    sizes: '100vw'
+    class: 'thumb'
 }) }}
 
 {# Any extra HTML attributes (top-level or attrs bag) #}
@@ -31,12 +30,11 @@ Use the **variable API** only (`craft.superImages`). Twig filters are not provid
     fetchpriority: 'high',
     'data-reveal': 'true',
     attrs: {
-        width: 1200,
-        decoding: 'sync'
+        width: 1200
     }
 }) }}
 
-{# <picture> with multi-width srcsets (all profile variants × formats) #}
+{# <picture> — multi-width srcsets (profile variants × formats) #}
 {{ craft.superImages.picture(asset, {
     profile: 'responsive',
     formats: ['webp', 'jpg'],
@@ -74,11 +72,11 @@ Use the **variable API** only (`craft.superImages`). Twig filters are not provid
     variants: ['sm', 'md', 'lg', 'xl']
 }) %}
 
-{# Explicit eager generate (processes now) #}
+{# Explicit generate now (bypasses delivery setting) #}
 {% set result = craft.superImages.generate(asset, { variant: 'md', format: 'webp' }) %}
 {{ result.url }}
 
-{# Soft eager generate for demos #}
+{# Soft generate for demos (swallows failures) #}
 {% set result = craft.superImages.tryGenerate(asset, { variant: 'md', format: 'webp' }) %}
 ```
 
@@ -95,21 +93,78 @@ Local/remote sources use the same pipeline as Assets and must pass allow-lists i
 
 ---
 
-## Delivery modes
+## Delivery
 
-| `delivery.mode` | What Twig emits |
+| Setting | Effect |
 |---|---|
-| `lazy` | Signed runtime action URL |
-| `eager` | Final storage/CDN URL |
-| `hybrid` | Storage URL (currently same as eager) |
+| `generateBeforePageLoad` | `true` = generate during Twig + storage URL; `false` = action URL when missing; omit = mirror Craft `generateTransformsBeforePageLoad` |
+| `thumbnail` | Tiny server-generated `src` for `picture()` — see [thumbnail placeholder](#thumbnail-placeholder-src) |
 
-Use `generate()` / CLI / auto-generate when you need files to exist before first page view.
+```php
+'delivery' => [
+    'generateBeforePageLoad' => true,
+],
+'runtime' => [
+    'enabled' => true, // needed when generateBeforePageLoad is false
+],
+```
+
+---
+
+## Thumbnail placeholder (`src`)
+
+When full candidates use signed action URLs (`generateBeforePageLoad = false`), Super Images can **generate a tiny derivative on the server** and put that **storage URL** in `src` so the `<img>` is not blank while larger files generate. Full candidates stay in `srcset` / `<source>`:
+
+```html
+<picture>
+  <source type="image/webp" srcset="…sm.webp 576w, …md.webp 768w, …">
+  <img
+    src="/transforms/super-images/…/photo-thumb.jpg"
+    srcset="…sm.jpg 576w, …md.jpg 768w, …"
+    sizes="100vw"
+    width="768"
+    height="…"
+  >
+</picture>
+```
+
+`src` is the server-generated thumbnail storage URL when `delivery.thumbnail` is enabled (otherwise a transparent SVG data URI). Layout space is reserved with **both** `width` and `height` (height is derived from the asset aspect ratio when the variant only sets width). Full candidates stay in `srcset` / `<source>`.
+
+Config (`delivery.thumbnail`):
+
+```php
+'delivery' => [
+    'generateBeforePageLoad' => false,
+    'thumbnail' => [
+        'enabled' => true,
+        'width' => 32,
+        'format' => 'jpg',
+        'quality' => 50,
+        'variant' => 'thumb',
+    ],
+],
+```
+
+Per-call overrides:
+
+```twig
+{# Disable thumbnail for this picture only #}
+{{ craft.superImages.picture(asset, { thumbnail: false }) }}
+
+{# Or via enabled flag / size override #}
+{{ craft.superImages.picture(asset, { thumbnail: { enabled: false } }) }}
+{{ craft.superImages.picture(asset, { thumbnail: { width: 48 } }) }}
+```
+
+First request for an asset may spend a few ms generating the thumb; later requests skip generation when the file already exists.
+
+`img()` does not use thumbnails or srcset — it emits one `src` for one variant. Use `picture()` for responsive delivery.
 
 ---
 
 ## Performance rules
 
-Do **not** call `generate()` inside list/gallery templates unless you intentionally want blocking eager generation.
+Do **not** call `generate()` inside list/gallery templates unless you intentionally want extra blocking generation beyond `generateBeforePageLoad`.
 
 Prefer:
 
@@ -119,5 +174,6 @@ Prefer:
 
 and either:
 
-- lazy runtime generation, or
+- `generateBeforePageLoad = true` (Craft-style, generate during Twig),
+- `generateBeforePageLoad = false` with runtime action URLs, and/or
 - pre-warm via `php craft super-images/generate` / queue / autoGenerate.

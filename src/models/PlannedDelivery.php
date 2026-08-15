@@ -19,8 +19,8 @@ final readonly class PlannedDelivery
      * @param string $identity Stable hash identifying this profile/variant/format/transform combination.
      * @param string $storagePath Relative path where the derivative would be written.
      * @param string $storageUrl Public URL from the storage adapter for the stored file.
-     * @param string $deliveryUrl URL emitted to templates (may be signed runtime URL in lazy mode).
-     * @param string $mode Delivery mode active when planned (`eager`, `lazy`, or `hybrid`).
+     * @param string $deliveryUrl URL emitted to templates (storage URL, or signed runtime URL when deferred).
+     * @param string $mode Delivery path used when planned (`beforePageLoad` or `runtime`).
      * @param string $profile Profile handle for this derivative.
      * @param string $variant Variant handle within the profile.
      * @param string $format Output format slug.

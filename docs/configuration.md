@@ -23,7 +23,7 @@ Every key in the example file is commented. Live servers are assumed to be **Ubu
 | `enabled` | Master switch |
 | `defaultProfile` / `defaultFormat` | Twig/CLI defaults |
 | `driver` | `auto` \| `libvips` \| `imagick` \| `gd` |
-| `delivery.mode` | `lazy` \| `eager` \| `hybrid` |
+| `delivery.generateBeforePageLoad` | Like Craft transforms: generate during Twig (`true`) or use runtime action URL when missing (`false`) |
 | `autoGenerate` | Queue on Asset upload/replace/focal-point |
 | `sources` | Local allow-list + remote host allow-list |
 | `runtime` | Signed URL TTL, signing secret, size limits |

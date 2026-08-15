@@ -67,7 +67,7 @@ class SuperImagesVariable
     }
 
     /**
-     * Plan and return a delivery URL (lazy signed or eager storage URL).
+     * Plan and return a delivery URL (storage URL, or signed action URL when deferred).
      *
      * When planning fails for a missing or invalid Craft asset, and
      * `policies.fallback` is enabled with a distinct fallback asset ID,
@@ -89,13 +89,14 @@ class SuperImagesVariable
      * Plan and return an `<img>` tag for one derivative.
      *
      * Applies the same fallback policy as {@see url()} when planning fails.
+     * Emits a single `src` (no `srcset`). Use {@see picture()} for responsive multi-width output.
      *
      * Generation options: `profile`, `variant`, `format`, `storage`.
      *
      * HTML attribute options:
      * - top-level keys that are not reserved (e.g. `id`, `class`, `data-*`)
      * - `attrs` / `attributes` / `imgAttrs` bag (merged last for those keys)
-     * - convenience keys: `alt`, `loading`, `decoding`, `sizes`
+     * - convenience keys: `alt`, `loading`
      *
      * Managed attrs (`src`, and dimensions when known) always win.
      *
@@ -114,24 +115,22 @@ class SuperImagesVariable
             return new Markup('<div class="error">Skipped: ' . $message . '</div>', 'UTF-8');
         }
 
+        [$width, $height] = $this->resolveLayoutDimensions($source, $planned);
+
         $defaults = [
             'alt' => (string) ($options['alt'] ?? $this->defaultAlt($source)),
             'loading' => $options['loading'] ?? 'lazy',
-            'decoding' => $options['decoding'] ?? 'async',
         ];
 
-        if ($planned->widthHint !== null) {
-            $defaults['width'] = $planned->widthHint;
+        if ($width !== null) {
+            $defaults['width'] = $width;
         }
 
-        if ($planned->heightHint !== null) {
-            $defaults['height'] = $planned->heightHint;
+        if ($height !== null) {
+            $defaults['height'] = $height;
         }
 
-        if (!empty($options['sizes'])) {
-            $defaults['sizes'] = $options['sizes'];
-        }
-
+        // Single derivative — no srcset. Use picture() for responsive multi-width output.
         $attrs = $this->mergeHtmlAttributes($defaults, $this->extractHtmlAttributes($options), [
             'src' => $planned->deliveryUrl,
         ]);
@@ -145,15 +144,18 @@ class SuperImagesVariable
      * Applies the same fallback policy as {@see url()} when planning fails.
      *
      * Uses profile variants (or explicit `variants`) as `w` descriptors.
-     * Optional `variant` picks the fallback `<img src>` (default: middle / `md`).
+     * Optional `variant` picks the fallback `<img srcset>` middle candidate (default: middle / `md`).
+     * When `delivery.thumbnail` is enabled, `<img src>` is a server-generated storage URL.
+     * Pass `thumbnail: false` (or `thumbnail: { enabled: false }`) to skip the thumb and use the
+     * fallback variant delivery URL as `src` instead.
      *
-     * Generation options: `profile`, `variant`, `variants`, `formats`, `format`, `storage`, `sizes`.
+     * Generation options: `profile`, `variant`, `variants`, `formats`, `format`, `storage`, `sizes`, `thumbnail`.
      *
      * HTML attribute options:
      * - `pictureAttrs` / `pictureAttributes` on `<picture>`
      * - top-level non-reserved keys + `attrs` / `attributes` / `imgAttrs` on the inner `<img>`
      * - `sourceAttrs` / `sourceAttributes` merged onto every `<source>`
-     * - convenience keys: `alt`, `loading`, `decoding`
+     * - convenience keys: `alt`, `loading`, `sizes`
      *
      * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
      * @param array<string, mixed> $options Generation and HTML attribute options.
@@ -189,6 +191,14 @@ class SuperImagesVariable
             $options['sourceAttrs'] ?? $options['sourceAttributes'] ?? [],
         );
 
+        $imgPlanned = $this->plan($source, array_merge($options, [
+            'profile' => $profileName,
+            'variant' => $fallbackVariant,
+            'format' => $fallback,
+        ]));
+        [$width, $height] = $this->resolveLayoutDimensions($source, $imgPlanned);
+        $thumbnailUrl = $this->resolveThumbnailUrl($source, $options);
+
         $html = [];
         $html[] = $pictureAttrs === []
             ? '<picture>'
@@ -206,29 +216,23 @@ class SuperImagesVariable
             ]));
         }
 
-        $imgPlanned = $this->plan($source, array_merge($options, [
-            'profile' => $profileName,
-            'variant' => $fallbackVariant,
-            'format' => $fallback,
-        ]));
-
         $defaults = [
             'alt' => (string) ($options['alt'] ?? $this->defaultAlt($source)),
             'loading' => $options['loading'] ?? 'lazy',
-            'decoding' => $options['decoding'] ?? 'async',
             'sizes' => $sizes,
         ];
 
-        if ($imgPlanned->widthHint !== null) {
-            $defaults['width'] = $imgPlanned->widthHint;
+        if ($width !== null) {
+            $defaults['width'] = $width;
         }
 
-        if ($imgPlanned->heightHint !== null) {
-            $defaults['height'] = $imgPlanned->heightHint;
+        if ($height !== null) {
+            $defaults['height'] = $height;
         }
 
         $imgAttrs = $this->mergeHtmlAttributes($defaults, $this->extractHtmlAttributes($options), [
-            'src' => $imgPlanned->deliveryUrl,
+            // Thumb when enabled; otherwise the fallback variant delivery URL (no SVG placeholder).
+            'src' => $thumbnailUrl ?? $imgPlanned->deliveryUrl,
             'srcset' => $this->srcset($source, [
                 'profile' => $profileName,
                 'format' => $fallback,
@@ -543,6 +547,118 @@ class SuperImagesVariable
     }
 
     /**
+     * Resolves display width/height so the layout box is reserved before pixels load.
+     *
+     * Uses planned geometry hints and fills the missing axis from the source asset's
+     * aspect ratio (variants often only set width).
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param PlannedDelivery $planned Planned delivery with optional width/height hints.
+     *
+     * @return array{0: ?int, 1: ?int} Tuple of [width, height].
+     */
+    private function resolveLayoutDimensions(Asset|string|int $source, PlannedDelivery $planned): array
+    {
+        $width = $planned->widthHint;
+        $height = $planned->heightHint;
+
+        $asset = $this->resolveAsset($source);
+        $srcW = $asset !== null ? (int) $asset->getWidth() : 0;
+        $srcH = $asset !== null ? (int) $asset->getHeight() : 0;
+
+        if ($width !== null && $width > 0 && ($height === null || $height <= 0) && $srcW > 0 && $srcH > 0) {
+            $height = (int) max(1, (int) round($width * $srcH / $srcW));
+        }
+
+        if ($height !== null && $height > 0 && ($width === null || $width <= 0) && $srcW > 0 && $srcH > 0) {
+            $width = (int) max(1, (int) round($height * $srcW / $srcH));
+        }
+
+        if (($width === null || $width <= 0) && ($height === null || $height <= 0) && $srcW > 0 && $srcH > 0) {
+            $width = $srcW;
+            $height = $srcH;
+        }
+
+        return [
+            $width !== null && $width > 0 ? $width : null,
+            $height !== null && $height > 0 ? $height : null,
+        ];
+    }
+
+    /**
+     * Resolves a Craft Asset from a Twig source reference when possible.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     *
+     * @return Asset|null The asset element, or null when the source is not asset-backed.
+     */
+    private function resolveAsset(Asset|string|int $source): ?Asset
+    {
+        if ($source instanceof Asset) {
+            return $source;
+        }
+
+        if (is_int($source) || (is_string($source) && ctype_digit($source))) {
+            return Craft::$app->getAssets()->getAssetById((int) $source);
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves a tiny placeholder URL for immediate `<img src>` paint.
+     *
+     * Generates a Super Images derivative server-side (skipped when already stored) and
+     * returns its storage URL — never a signed runtime action URL.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Twig options; `thumbnail` may disable or override config.
+     *
+     * @return string|null Thumbnail storage URL, or null when disabled / generation fails.
+     */
+    private function resolveThumbnailUrl(Asset|string|int $source, array $options): ?string
+    {
+        $settings = Plugin::getInstance()->getSettings()->delivery['thumbnail'] ?? [];
+        if (!is_array($settings)) {
+            $settings = [];
+        }
+
+        $override = $options['thumbnail'] ?? null;
+        if ($override === false || $override === 0 || $override === '0' || $override === 'false') {
+            return null;
+        }
+
+        $enabled = (bool) ($settings['enabled'] ?? true);
+        if (is_array($override)) {
+            $settings = array_merge($settings, $override);
+            if (array_key_exists('enabled', $override) && ($override['enabled'] === false || $override['enabled'] === 0 || $override['enabled'] === '0' || $override['enabled'] === 'false')) {
+                return null;
+            }
+            $enabled = (bool) ($settings['enabled'] ?? true);
+        } elseif ($override === true || $override === 1 || $override === '1' || $override === 'true') {
+            $enabled = true;
+        }
+
+        if (!$enabled) {
+            return null;
+        }
+
+        try {
+            return Plugin::getInstance()->getDeliveryUrls()->ensureThumbnail(
+                $this->buildRequest($source, $options),
+                $settings,
+            );
+        } catch (\Throwable $exception) {
+            Craft::warning(
+                'Super Images thumbnail resolve failed: ' . $exception->getMessage(),
+                __METHOD__,
+            );
+
+            return null;
+        }
+    }
+
+    /**
      * Whether an option key is reserved for generation/planning rather than HTML attrs.
      *
      * @param string $key Option key to test.
@@ -560,10 +676,10 @@ class SuperImagesVariable
             'formats',
             'storage',
             'preview',
+            'thumbnail',
             // convenience defaults handled separately
             'alt',
             'loading',
-            'decoding',
             'sizes',
             // attribute bags / wrappers
             'attrs',

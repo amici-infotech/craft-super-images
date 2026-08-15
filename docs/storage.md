@@ -52,14 +52,14 @@ Never under webroot.
 
 ## Path shape
 
-Derivatives use an Imager-X-style layout so related files stay grouped and
+Derivatives use a folder-grouped layout so related files stay grouped and
 filenames stay readable:
 
 ```text
 {folderHash}/{assetId}/{basename}-{variant}.{ext}
 ```
 
-- `folderHash` — `md5('/' . folderPath)` (same idea as Imager-X `hashPath`)
+- `folderHash` — `md5('/' . folderPath)` so assets in the same volume folder share a prefix
 - `assetId` — Craft asset element ID
 - `basename-variant.ext` — original filename stem + variant handle + format
 

@@ -45,7 +45,7 @@ class StatusController extends Controller
 
         $output = [
             'enabled' => $settings->enabled,
-            'deliveryMode' => $settings->delivery['mode'] ?? 'lazy',
+            'generateBeforePageLoad' => Plugin::getInstance()->getDeliveryUrls()->generatesBeforePageLoad(),
             'storageDefault' => $settings->storage['default'] ?? 'local',
             'autoGenerate' => $settings->autoGenerate,
             'runtime' => [

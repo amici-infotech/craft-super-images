@@ -92,6 +92,9 @@ final class ConfigurationResolver extends Component
         }
 
         $encoderOptions = $this->resolveEncoderOptions($settings, $format, $profile);
+        if ($request->encodeOverrides !== []) {
+            $encoderOptions = array_merge($encoderOptions, $request->encodeOverrides);
+        }
         $optimizerOptions = $settings->optimizers;
         $storageAdapter = $request->storageAdapter ?? null;
         if ($storageAdapter === null && isset($layer['storage']) && is_string($layer['storage'])) {
@@ -118,7 +121,7 @@ final class ConfigurationResolver extends Component
             storageConfig: $settings->storage,
             runtime: $settings->runtime,
             sharpness: SharpnessSettings::fromConfig($geometry['sharpness'] ?? 'sharp'),
-            optimizersEnabled: (bool)($optimizerOptions['enabled'] ?? true),
+            optimizersEnabled: $request->optimizersEnabled ?? (bool)($optimizerOptions['enabled'] ?? true),
             allowUpscale: (bool)($geometry['allowUpscale'] ?? false),
             maxSourcePixels: (int)($safety['maxSourcePixels'] ?? 40_000_000),
         );
@@ -340,6 +343,8 @@ final class ConfigurationResolver extends Component
             $request->variant,
             $request->format,
             $request->operationOverrides,
+            $request->encodeOverrides,
+            $request->optimizersEnabled,
             $request->volume?->id,
             $request->folder?->id,
             $request->field?->id,

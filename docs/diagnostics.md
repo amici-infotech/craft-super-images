@@ -26,8 +26,8 @@ Each optimizer binary is listed on its own line with the resolved path (and whic
 - local storage writable
 - markers path writable
 - temp writable
-- runtime signing ready for lazy mode
-- delivery mode
+- runtime signing ready when generateBeforePageLoad is false
+- generateBeforePageLoad
 - queue counts
 
 Statuses: `PASS` / `WARN` / `FAIL`.

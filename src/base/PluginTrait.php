@@ -80,7 +80,7 @@ trait PluginTrait
      * - `manifest` — expands profiles into manifest units for an asset
      * - `signedUrls` — signs and verifies lazy runtime URLs
      * - `generationLocks` — prevents duplicate concurrent generation
-     * - `deliveryUrls` — plans delivery URLs without processing
+     * - `deliveryUrls` — resolves storage vs runtime delivery URLs
      * - `autoGenerate` — enqueues generation on asset save
      * - `runtimeGeneration` — handles signed lazy generation requests
      * - `binaryResolver` — locates external optimizer binaries
