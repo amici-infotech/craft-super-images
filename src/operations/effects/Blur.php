@@ -12,48 +12,50 @@ use amici\SuperImages\contracts\ImageDriverInterface;
 use amici\SuperImages\drivers\GdDriver;
 use amici\SuperImages\drivers\ImagickDriver;
 use amici\SuperImages\drivers\LibvipsDriver;
-use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
 
 /**
  * Blur Operation
  *
- * Applies a blur effect to the image. Driver-specific options apply:
- * GD: `passes` (default: 1); Imagick: `radius`, `sigma` (default: 1.0); libvips: `sigma` (default: 1.0).
- * Supported drivers: GD, Imagick, libvips.
+ * Applies a blur effect. Built-in drivers use different option names:
+ * GD `passes`; Imagick `radius`/`sigma`; libvips `sigma`.
+ * Third-party drivers implementing `blur($handle, $sigma)` are supported via duck-typing.
  */
 final class Blur extends AbstractOperation
 {
-    /**
-     * Returns the operation identifier.
-     *
-     * @return string
-     */
     public function name(): string
     {
         return 'blur';
     }
 
-    /**
-     * Blurs the image via the active driver.
-     *
-     * @param ImageHandle $handle The image to blur.
-     * @param ImageDriverInterface $driver The active image driver.
-     *
-     * @return ImageHandle The blurred image handle.
-     */
     public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle
     {
-        return match (true) {
-            $driver instanceof GdDriver => $driver->blur($handle, (int)($this->options['passes'] ?? 1)),
-            $driver instanceof ImagickDriver => $driver->blur(
-                $handle,
-                (float)($this->options['radius'] ?? 1.0),
-                (float)($this->options['sigma'] ?? 1.0),
-            ),
-            $driver instanceof LibvipsDriver => $driver->blur($handle, (float)($this->options['sigma'] ?? 1.0)),
-            default => throw new UnsupportedOperationException('Blur is not supported by the selected driver.'),
-        };
+        $passes = (int)($this->options['passes'] ?? 1);
+        $radius = (float)($this->options['radius'] ?? 1.0);
+        $sigma = (float)($this->options['sigma'] ?? 1.0);
+
+        if ($driver instanceof GdDriver) {
+            return $driver->blur($handle, $passes);
+        }
+
+        if ($driver instanceof ImagickDriver) {
+            return $driver->blur($handle, $radius, $sigma);
+        }
+
+        if ($driver instanceof LibvipsDriver) {
+            return $driver->blur($handle, $sigma);
+        }
+
+        // Custom drivers: Imagick-like (radius, sigma) when possible, else sigma-only.
+        if (is_callable([$driver, 'blur'])) {
+            try {
+                return $this->invokeDriver($driver, 'blur', $handle, $radius, $sigma);
+            } catch (\ArgumentCountError) {
+                return $this->invokeDriver($driver, 'blur', $handle, $sigma);
+            }
+        }
+
+        return $this->invokeDriver($driver, 'blur', $handle, $sigma);
     }
 }

@@ -10,6 +10,7 @@ namespace amici\SuperImages\operations;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
 use amici\SuperImages\contracts\OperationInterface;
+use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\models\OperationDefinition;
 
@@ -108,4 +109,40 @@ abstract class AbstractOperation implements OperationInterface
      * @return ImageHandle The transformed image handle.
      */
     abstract public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle;
+
+    /**
+     * Call a driver transform method when present (built-in or third-party).
+     *
+     * Prefer this over hard-coding instanceof lists so registered custom drivers work
+     * as long as they implement the same method signature as the built-ins.
+     *
+     * @param ImageDriverInterface $driver Active driver.
+     * @param string $method Driver method name (e.g. `resize`, `grayscale`).
+     * @param ImageHandle $handle Current image handle.
+     * @param mixed ...$args Additional method arguments after the handle.
+     *
+     * @return ImageHandle Transformed handle.
+     *
+     * @throws UnsupportedOperationException When the driver does not expose the method.
+     */
+    protected function invokeDriver(
+        ImageDriverInterface $driver,
+        string $method,
+        ImageHandle $handle,
+        mixed ...$args,
+    ): ImageHandle {
+        if (!is_callable([$driver, $method])) {
+            throw new UnsupportedOperationException(sprintf(
+                'Operation "%s" requires driver method %s(); "%s" does not implement it.',
+                $this->name(),
+                $method,
+                $driver->name(),
+            ));
+        }
+
+        /** @var ImageHandle $result */
+        $result = $driver->{$method}($handle, ...$args);
+
+        return $result;
+    }
 }

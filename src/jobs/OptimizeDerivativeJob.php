@@ -18,7 +18,7 @@ use craft\queue\BaseJob;
  * Optimize Derivative Job
  *
  * Runs jpegoptim/optipng/etc. on a file that was written without post-optimization
- * so Twig / generate-before-page-load can return early (Imager-style optimizeType=job).
+ * so Twig / generate-before-page-load can return early (optimizeType=job).
  */
 class OptimizeDerivativeJob extends BaseJob
 {
@@ -104,7 +104,8 @@ class OptimizeDerivativeJob extends BaseJob
                 bytes: $bytes,
             );
 
-            $optimizer = $plugin->getOptimizerManager()->binaryOptimizer();
+            $optimizer = $plugin->getOptimizerManager()->get($this->tool)
+                ?? $plugin->getOptimizerManager()->binaryOptimizer();
             $options = [
                 'tool' => $this->tool,
                 'binary' => $resolvedBinary,

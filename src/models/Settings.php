@@ -138,7 +138,7 @@ class Settings extends Model
         'enabled' => true,
         /**
          * When to run same-format post-optimizers (jpegoptim, optipng, …):
-         * - job     = write file first, optimize via Craft queue (faster page load; Imager default)
+         * - job     = write file first, optimize via Craft queue (faster page load; deferred after write)
          * - runtime = optimize during the generate request before serving
          * Format converters (cwebp / avifenc) always run during generate.
          */

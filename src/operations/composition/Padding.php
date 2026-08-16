@@ -9,9 +9,6 @@
 namespace amici\SuperImages\operations\composition;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
-use amici\SuperImages\drivers\GdDriver;
-use amici\SuperImages\drivers\ImagickDriver;
-use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
 
@@ -50,10 +47,6 @@ final class Padding extends AbstractOperation
         $left = (int)($this->options['left'] ?? $this->options['size'] ?? 0);
         $color = (string)($this->options['color'] ?? '#ffffff');
 
-        return match (true) {
-            $driver instanceof GdDriver,
-            $driver instanceof ImagickDriver => $driver->padding($handle, $top, $right, $bottom, $left, $color),
-            default => throw new UnsupportedOperationException('Padding is not supported by the selected driver.'),
-        };
+        return $this->invokeDriver($driver, 'padding', $handle, $top, $right, $bottom, $left, $color);
     }
 }

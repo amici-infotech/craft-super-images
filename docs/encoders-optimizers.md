@@ -16,7 +16,7 @@ Storage writes the final object
 
 **Optimizers** are optional external binaries. Configure which tool runs per format, binary paths, and custom CLI arguments.
 
-### `optimizeType` (Imager-style)
+### `optimizeType`
 
 ```php
 'optimizers' => [

@@ -65,13 +65,22 @@ class DriverManager extends Component
     /**
      * Register an image driver implementation.
      *
+     * Custom drivers are appended to the auto-fallback order after built-ins so
+     * `driver: auto` can select them when preferred drivers are unavailable.
+     * Prefer an explicit `driver` config value for production use of a custom driver.
+     *
      * @param ImageDriverInterface $driver The driver instance to register.
      *
      * @return void
      */
     public function register(ImageDriverInterface $driver): void
     {
-        $this->_drivers[$driver->name()] = $driver;
+        $name = strtolower($driver->name());
+        $this->_drivers[$name] = $driver;
+
+        if (!in_array($name, $this->_fallbackOrder, true)) {
+            $this->_fallbackOrder[] = $name;
+        }
     }
 
     /**

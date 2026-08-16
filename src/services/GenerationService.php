@@ -52,12 +52,16 @@ class GenerationService extends Component
     public const EVENT_AFTER_GENERATE = 'afterGenerate';
 
     /**
-     * Event fired immediately before the encoded image is written to storage.
+     * Event fired after operations run and immediately before native/external encoding.
      */
     public const EVENT_BEFORE_ENCODE = 'beforeEncode';
 
     /**
-     * Event fired immediately after encoding and before optimization.
+     * Event fired after the final output format is encoded (before optional post-optimize).
+     *
+     * On the external converter path (cwebp/avifenc), this fires after the intermediate
+     * PNG encode and again is not re-fired after conversion — listeners should treat
+     * post-convert bytes as authoritative only after generate completes.
      */
     public const EVENT_AFTER_ENCODE = 'afterEncode';
 

@@ -18,29 +18,25 @@ use yii\base\Component;
 /**
  * Storage Manager
  *
- * Registers storage adapters from config, lazily instantiates local/S3 adapters,
- * and exposes the default adapter name from settings.
+ * Registers adapters from config + events, supports custom `type` factories,
+ * and lazily instantiates local/S3 (and third-party) adapters.
  */
 class StorageManager extends Component
 {
-    /**
-     * Event fired after config adapters are registered so plugins can add custom backends.
-     */
     public const EVENT_REGISTER_STORAGE_ADAPTERS = 'registerStorageAdapters';
 
-    /**
-     * Registered adapter instances keyed by adapter name.
-     *
-     * @var array<string, StorageAdapterInterface>
-     */
+    /** @var array<string, StorageAdapterInterface> */
     private array $_adapters = [];
 
-    /**
-     * Raw adapter configuration keyed by adapter name.
-     *
-     * @var array<string, array<string, mixed>>
-     */
+    /** @var array<string, array<string, mixed>> */
     private array $_configs = [];
+
+    /**
+     * Factories for config `type` values.
+     *
+     * @var array<string, callable(string, array<string, mixed>): StorageAdapterInterface>
+     */
+    private array $_types = [];
 
     /**
      * Register a storage adapter instance and optional config snapshot.
@@ -48,8 +44,6 @@ class StorageManager extends Component
      * @param string $name Adapter handle used in settings and GenerationDefinition.
      * @param StorageAdapterInterface $adapter The adapter instance.
      * @param array<string, mixed> $config Optional config array stored for lazy re-instantiation.
-     *
-     * @return void
      */
     public function register(string $name, StorageAdapterInterface $adapter, array $config = []): void
     {
@@ -58,34 +52,55 @@ class StorageManager extends Component
     }
 
     /**
-     * Register adapters declared in the storage config section.
+     * Register a factory for a storage `type` string used in config.
+     *
+     * @param string $type Type key (e.g. `gcs`).
+     * @param callable(string, array<string, mixed>): StorageAdapterInterface $factory
+     */
+    public function registerType(string $type, callable $factory): void
+    {
+        $this->_types[strtolower($type)] = $factory;
+    }
+
+    /**
+     * Register adapters declared in the storage config section, then fire the extension event.
      *
      * @param array<string, mixed> $storageConfig The storage settings array from plugin config.
-     *
-     * @return void
      */
     public function registerFromConfig(array $storageConfig): void
     {
+        $this->_types['local'] = static fn(string $name, array $config): StorageAdapterInterface => new LocalStorageAdapter($name, $config);
+        $this->_types['s3'] = static fn(string $name, array $config): StorageAdapterInterface => new S3CompatibleStorageAdapter($name, $config);
+
         $adapters = $storageConfig['adapters'] ?? [];
 
         foreach ($adapters as $name => $config) {
             if (!is_array($config)) {
                 continue;
             }
-
-            $this->_configs[$name] = $config;
-
-            $type = (string)($config['type'] ?? 'local');
-            if ($type === 'local') {
-                $this->register($name, new LocalStorageAdapter($name, $config), $config);
-            }
+            $this->_configs[(string) $name] = $config;
         }
 
         $event = new RegisterStorageAdaptersEvent();
         $this->trigger(self::EVENT_REGISTER_STORAGE_ADAPTERS, $event);
 
+        foreach ($event->types as $type => $factory) {
+            $this->registerType((string) $type, $factory);
+        }
+
         foreach ($event->adapters as $name => $adapter) {
-            $this->register($name, $adapter, $event->configs[$name] ?? []);
+            $this->register((string) $name, $adapter, $event->configs[$name] ?? $this->_configs[$name] ?? []);
+        }
+
+        // Eager-create local adapters so path/baseUrl issues surface early.
+        foreach ($this->_configs as $name => $config) {
+            if (isset($this->_adapters[$name])) {
+                continue;
+            }
+            $type = strtolower((string)($config['type'] ?? 'local'));
+            if ($type === 'local' && isset($this->_types['local'])) {
+                $this->register($name, ($this->_types['local'])($name, $config), $config);
+            }
         }
     }
 
@@ -93,8 +108,6 @@ class StorageManager extends Component
      * Select a storage adapter by name, instantiating it lazily when needed.
      *
      * @param string $name Adapter handle from settings or GenerationDefinition.
-     *
-     * @return StorageAdapterInterface The ready storage adapter instance.
      *
      * @throws StorageConfigurationException When the adapter is unknown or has an unsupported type.
      */
@@ -106,14 +119,17 @@ class StorageManager extends Component
                 throw new StorageConfigurationException(sprintf('Storage adapter "%s" is not registered.', $name));
             }
 
-            $type = (string)($config['type'] ?? 'local');
-            $adapter = match ($type) {
-                'local' => new LocalStorageAdapter($name, $config),
-                's3' => new S3CompatibleStorageAdapter($name, $config),
-                default => throw new StorageConfigurationException(sprintf('Unknown storage adapter type "%s".', $type)),
-            };
+            $type = strtolower((string)($config['type'] ?? 'local'));
+            $factory = $this->_types[$type] ?? null;
+            if ($factory === null) {
+                throw new StorageConfigurationException(sprintf(
+                    'Unknown storage adapter type "%s". Register a type factory via %s::$types.',
+                    $type,
+                    RegisterStorageAdaptersEvent::class,
+                ));
+            }
 
-            $this->register($name, $adapter, $config);
+            $this->register($name, $factory($name, $config), $config);
         }
 
         return $this->_adapters[$name];
@@ -123,8 +139,6 @@ class StorageManager extends Component
      * Resolve the default storage adapter name from config.
      *
      * @param array<string, mixed> $storageConfig The storage settings array.
-     *
-     * @return string The default adapter handle, or local when not set.
      */
     public function defaultName(array $storageConfig): string
     {

@@ -79,12 +79,22 @@ class EncoderManager extends Component
         $format = strtolower($format);
         $format = $format === 'jpg' ? 'jpeg' : $format;
 
-        $encoder = $this->_encoders[$format] ?? $this->_encoders['jpeg'] ?? null;
+        $encoder = $this->_encoders[$format] ?? null;
 
         if ($encoder === null || !$encoder->supports($format)) {
             throw new EncoderUnavailableException(sprintf('No encoder available for format "%s".', $format));
         }
 
         return $encoder;
+    }
+
+    /**
+     * Registered encoders keyed by format.
+     *
+     * @return array<string, EncoderInterface>
+     */
+    public function all(): array
+    {
+        return $this->_encoders;
     }
 }

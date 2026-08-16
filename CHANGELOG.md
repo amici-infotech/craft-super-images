@@ -5,7 +5,9 @@
 - Storage path naming is configurable (`storage.naming`) with token templates; defaults include `{transformHash}` so changing operations/settings no longer reuses stale asset cache paths.
 - CP Settings: Derivative naming editor + token glossary + live path examples.
 - Imagick sepia: pass threshold 0–100 directly (no QuantumRange multiply) — fixes solid-color output on ImageMagick 7 HDRI.
-- Docs refreshed: demo guide, storage naming, Twig operations, configuration, and CP settings.
+- Extensibility: optimizer `select()` honors registered tools; storage adapters support config `type` factories; operations duck-type driver methods for third-party drivers; custom drivers join auto-fallback.
+- Cleanup: removed leftover planning artifact, dead driver helpers, duplicate GD geometry branch; scrubbed competitor product names from comments/docs.
+- Docs refreshed: demo guide, storage naming, Twig operations, configuration, CP settings, extension API examples.
 
 ## 5.0.2
 - `enabled => false` is a real kill switch for generation: CLI generate, queue jobs, runtime endpoint, auto-generate, and Playground generate all refuse to process.

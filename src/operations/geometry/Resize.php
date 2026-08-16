@@ -9,9 +9,6 @@
 namespace amici\SuperImages\operations\geometry;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
-use amici\SuperImages\drivers\GdDriver;
-use amici\SuperImages\drivers\ImagickDriver;
-use amici\SuperImages\drivers\LibvipsDriver;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
 
@@ -48,11 +45,6 @@ final class Resize extends AbstractOperation
         $height = isset($this->options['height']) ? (int)$this->options['height'] : null;
         $mode = (string)($this->options['mode'] ?? 'fit');
 
-        return match (true) {
-            $driver instanceof GdDriver,
-            $driver instanceof ImagickDriver,
-            $driver instanceof LibvipsDriver => $driver->resize($handle, $width, $height, $mode),
-            default => throw new \amici\SuperImages\exceptions\UnsupportedOperationException('Resize is not supported by the selected driver.'),
-        };
+        return $this->invokeDriver($driver, 'resize', $handle, $width, $height, $mode);
     }
 }

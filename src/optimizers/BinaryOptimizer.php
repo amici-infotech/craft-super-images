@@ -222,7 +222,7 @@ class BinaryOptimizer implements OptimizerInterface
         }
 
         return match ($tool) {
-            // In-place strip/optimize (same approach as Imager). Avoid --stdout so we
+            // In-place strip/optimize . Avoid --stdout so we
             // never depend on capturing binary JPEG data from process pipes.
             'jpegoptim' => array_values(array_filter([
                 $binary,

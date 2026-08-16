@@ -9,8 +9,6 @@
 namespace amici\SuperImages\operations\composition;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
-use amici\SuperImages\drivers\ImagickDriver;
-use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\exceptions\WatermarkSourceException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
@@ -55,9 +53,6 @@ final class Overlay extends AbstractOperation
         $y = (int)($this->options['y'] ?? 0);
         $opacity = (float)($this->options['opacity'] ?? 1.0);
 
-        return match (true) {
-            $driver instanceof ImagickDriver => $driver->overlay($handle, $sourcePath, $x, $y, $opacity),
-            default => throw new UnsupportedOperationException('Overlay is not supported by the selected driver.'),
-        };
+        return $this->invokeDriver($driver, 'overlay', $handle, $sourcePath, $x, $y, $opacity);
     }
 }

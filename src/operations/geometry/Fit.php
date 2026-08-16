@@ -9,9 +9,6 @@
 namespace amici\SuperImages\operations\geometry;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
-use amici\SuperImages\drivers\GdDriver;
-use amici\SuperImages\drivers\ImagickDriver;
-use amici\SuperImages\drivers\LibvipsDriver;
 use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
@@ -48,11 +45,6 @@ final class Fit extends AbstractOperation
         $width = isset($this->options['width']) ? (int)$this->options['width'] : null;
         $height = isset($this->options['height']) ? (int)$this->options['height'] : null;
 
-        return match (true) {
-            $driver instanceof GdDriver,
-            $driver instanceof ImagickDriver,
-            $driver instanceof LibvipsDriver => $driver->fit($handle, $width, $height),
-            default => throw new UnsupportedOperationException('Fit is not supported by the selected driver.'),
-        };
+        return $this->invokeDriver($driver, 'fit', $handle, $width, $height);
     }
 }

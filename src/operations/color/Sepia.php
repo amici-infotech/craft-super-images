@@ -9,8 +9,6 @@
 namespace amici\SuperImages\operations\color;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
-use amici\SuperImages\drivers\ImagickDriver;
-use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
 
@@ -47,9 +45,6 @@ final class Sepia extends AbstractOperation
     {
         $threshold = (int)($this->options['threshold'] ?? $this->options['amount'] ?? 80);
 
-        return match (true) {
-            $driver instanceof ImagickDriver => $driver->sepia($handle, $threshold),
-            default => throw new UnsupportedOperationException('Sepia is not supported by the selected driver.'),
-        };
+        return $this->invokeDriver($driver, 'sepia', $handle, $threshold);
     }
 }

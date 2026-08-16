@@ -67,11 +67,16 @@ class OptimizerManager extends Component
      */
     public function register(OptimizerInterface $optimizer): void
     {
-        $this->_optimizers[$optimizer->name()] = $optimizer;
+        $this->_optimizers[strtolower($optimizer->name())] = $optimizer;
     }
 
     /**
      * Select the optimizer for a given output format.
+     *
+     * Resolution order:
+     * 1. Registered optimizer whose `name()` matches the configured tool
+     * 2. Built-in BinaryOptimizer when the CLI tool is available
+     * 3. NullOptimizer passthrough
      *
      * @param string $format Output format (jpg/jpeg normalized internally).
      * @param array<string, mixed> $config Optimizer config map keyed by format.
@@ -93,12 +98,41 @@ class OptimizerManager extends Component
             return $this->nullOptimizer();
         }
 
+        $registered = $this->get($tool);
+        if ($registered !== null && $registered->name() !== 'binary' && $registered->name() !== 'null') {
+            if ($registered->supports($format)) {
+                return $registered;
+            }
+        }
+
         $binary = $this->binaryOptimizer();
         if ($binary->supports($format) && $binary->canOptimize($tool, $binaryPath)) {
             return $binary;
         }
 
         return $this->nullOptimizer();
+    }
+
+    /**
+     * Return a registered optimizer by name, if present.
+     *
+     * @param string $name Optimizer `name()` (e.g. `jpegoptim`, `binary`, custom handle).
+     *
+     * @return OptimizerInterface|null
+     */
+    public function get(string $name): ?OptimizerInterface
+    {
+        return $this->_optimizers[strtolower($name)] ?? null;
+    }
+
+    /**
+     * All registered optimizers.
+     *
+     * @return list<OptimizerInterface>
+     */
+    public function all(): array
+    {
+        return array_values($this->_optimizers);
     }
 
     /**

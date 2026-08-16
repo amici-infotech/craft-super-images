@@ -9,7 +9,6 @@
 namespace amici\SuperImages\operations\composition;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
-use amici\SuperImages\drivers\ImagickDriver;
 use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
@@ -50,9 +49,6 @@ final class Text extends AbstractOperation
             throw new UnsupportedOperationException('Text operation requires non-empty `content` (or `text`).');
         }
 
-        return match (true) {
-            $driver instanceof ImagickDriver => $driver->text($handle, $content, $this->options),
-            default => throw new UnsupportedOperationException('Text is not supported by the selected driver.'),
-        };
+        return $this->invokeDriver($driver, 'text', $handle, $content, $this->options);
     }
 }

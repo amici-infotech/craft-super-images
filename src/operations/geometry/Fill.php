@@ -9,9 +9,6 @@
 namespace amici\SuperImages\operations\geometry;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
-use amici\SuperImages\drivers\GdDriver;
-use amici\SuperImages\drivers\ImagickDriver;
-use amici\SuperImages\drivers\LibvipsDriver;
 use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
@@ -51,11 +48,6 @@ final class Fill extends AbstractOperation
         [$width, $height] = $this->resolveDimensions($handle);
         $position = (string)($this->options['position'] ?? 'center-center');
 
-        return match (true) {
-            $driver instanceof GdDriver,
-            $driver instanceof ImagickDriver,
-            $driver instanceof LibvipsDriver => $driver->fill($handle, $width, $height, $position),
-            default => throw new UnsupportedOperationException('Fill is not supported by the selected driver.'),
-        };
+        return $this->invokeDriver($driver, 'fill', $handle, $width, $height, $position);
     }
 }

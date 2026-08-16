@@ -653,17 +653,11 @@ final class GdDriver extends AbstractDriver
             return [$handle->width, $handle->height];
         }
 
-        if ($mode === 'scale' && $width !== null && $height === null) {
+        if ($width !== null && $height === null) {
             $ratio = $width / max(1, $handle->width);
-
-            $targets = [max(1, $width), max(1, (int)round($handle->height * $ratio))];
-        } elseif ($width !== null && $height === null) {
-            $ratio = $width / max(1, $handle->width);
-
             $targets = [max(1, $width), max(1, (int)round($handle->height * $ratio))];
         } elseif ($height !== null && $width === null) {
             $ratio = $height / max(1, $handle->height);
-
             $targets = [max(1, (int)round($handle->width * $ratio)), max(1, $height)];
         } else {
             $targets = [max(1, (int)$width), max(1, (int)$height)];

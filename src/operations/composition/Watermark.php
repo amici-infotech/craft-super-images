@@ -9,8 +9,6 @@
 namespace amici\SuperImages\operations\composition;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
-use amici\SuperImages\drivers\ImagickDriver;
-use amici\SuperImages\exceptions\UnsupportedOperationException;
 use amici\SuperImages\exceptions\WatermarkSourceException;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\operations\AbstractOperation;
@@ -60,18 +58,14 @@ final class Watermark extends AbstractOperation
             );
         }
 
-        if (!$driver instanceof ImagickDriver) {
-            throw new UnsupportedOperationException('Watermark is not supported by the selected driver.');
-        }
-
         if ($hasText && !$hasPath) {
-            return $driver->text($handle, $text, $this->options);
+            return $this->invokeDriver($driver, 'text', $handle, $text, $this->options);
         }
 
         $position = (string) ($this->options['position'] ?? 'bottom-right');
         $opacity = (float) ($this->options['opacity'] ?? 0.5);
         $cover = filter_var($this->options['cover'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-        return $driver->watermark($handle, $sourcePath, $position, $opacity, $cover);
+        return $this->invokeDriver($driver, 'watermark', $handle, $sourcePath, $position, $opacity, $cover);
     }
 }

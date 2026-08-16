@@ -14,7 +14,12 @@ use yii\base\Event;
 /**
  * Register Storage Adapters Event
  *
- * Populate `$adapters` as name => adapter (optional config in `$configs`).
+ * - `$adapters`: ready instances keyed by handle (overrides config for that handle)
+ * - `$configs`: optional config snapshots keyed by handle
+ * - `$types`: factories for config `type` values, so third parties can use
+ *   `'type' => 'gcs'` in `storage.adapters` without shipping an instance up front
+ *
+ * @var array<string, callable(string $name, array<string, mixed> $config): StorageAdapterInterface> $types
  */
 class RegisterStorageAdaptersEvent extends Event
 {
@@ -31,4 +36,11 @@ class RegisterStorageAdaptersEvent extends Event
      * @var array<string, array<string, mixed>>
      */
     public array $configs = [];
+
+    /**
+     * Type factories keyed by `type` string from config (e.g. `gcs`, `azure`).
+     *
+     * @var array<string, callable(string, array<string, mixed>): StorageAdapterInterface>
+     */
+    public array $types = [];
 }

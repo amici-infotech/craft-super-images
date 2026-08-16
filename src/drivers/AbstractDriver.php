@@ -10,9 +10,7 @@ namespace amici\SuperImages\drivers;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
 use amici\SuperImages\contracts\OperationInterface;
-use amici\SuperImages\exceptions\ProcessingException;
 use amici\SuperImages\exceptions\UnsupportedOperationException;
-use amici\SuperImages\models\Dimensions;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\models\SharpnessSettings;
 
@@ -129,29 +127,6 @@ abstract class AbstractDriver implements ImageDriverInterface
     }
 
     /**
-     * Ensures a dimension value is either null or a positive integer.
-     *
-     * @param int|null $value The dimension value to validate.
-     * @param string $label Human-readable label used in error messages.
-     *
-     * @return int|null The validated dimension, or null when not provided.
-     *
-     * @throws ProcessingException When the value is zero or negative.
-     */
-    protected function assertPositiveDimension(?int $value, string $label): ?int
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        if ($value <= 0) {
-            throw new ProcessingException(sprintf('%s must be a positive integer.', $label));
-        }
-
-        return $value;
-    }
-
-    /**
      * Calculates a source crop box that preserves the target aspect ratio.
      *
      * @param int $sourceWidth Source image width in pixels.
@@ -252,18 +227,5 @@ abstract class AbstractDriver implements ImageDriverInterface
         }
 
         return [max(1, $width), max(1, $height)];
-    }
-
-    /**
-     * Returns a copy of the handle with updated width and height metadata.
-     *
-     * @param ImageHandle $handle The handle whose metadata should be updated.
-     * @param Dimensions $dimensions The new dimensions to apply.
-     *
-     * @return ImageHandle A handle with refreshed dimension metadata.
-     */
-    protected function updateHandleDimensions(ImageHandle $handle, Dimensions $dimensions): ImageHandle
-    {
-        return $handle->withDimensions($dimensions->width, $dimensions->height);
     }
 }
