@@ -74,10 +74,10 @@ class DiagnosticsService extends Component
             'Plugin enabled',
             $settings->enabled
                 ? 'Super Images is enabled.'
-                : 'Super Images is disabled in config.',
+                : 'Disabled: no transforms/generation. Twig falls back to original image URLs.',
             $settings->enabled
                 ? null
-                : 'Set `enabled => true` in `config/super-images.php`, then clear caches.',
+                : 'Set `enabled => true` in `config/super-images.php` to process images, then clear caches.',
         );
 
         $selectedName = null;

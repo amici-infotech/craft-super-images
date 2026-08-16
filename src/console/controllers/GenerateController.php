@@ -136,6 +136,15 @@ class GenerateController extends Controller
      */
     public function actionIndex(): int
     {
+        if (!Plugin::getInstance()->isEnabled()) {
+            $this->stderr(
+                "Super Images is disabled (`enabled => false`). Enable it in config/super-images.php to generate.\n",
+                Console::FG_RED,
+            );
+
+            return ExitCode::CONFIG;
+        }
+
         if (!$this->asset && !$this->volume) {
             $this->stderr("Provide --asset=ID and/or --volume=handle.\n", Console::FG_RED);
 

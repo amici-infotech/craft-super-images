@@ -120,6 +120,19 @@ class Plugin extends CraftPlugin
     }
 
     /**
+     * Whether Super Images processing is active.
+     *
+     * When false: no generation, runtime, auto-queue, or CLI generate.
+     * Twig helpers still render safely using the original source URL.
+     *
+     * @return bool True when `settings.enabled` is true.
+     */
+    public function isEnabled(): bool
+    {
+        return $this->getSettings()->enabled;
+    }
+
+    /**
      * Builds the Control Panel navigation item and subnavigation.
      *
      * Subnav entries are filtered by user permissions.

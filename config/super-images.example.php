@@ -12,7 +12,9 @@ use craft\helpers\App;
  */
 return [
 
-    // Master on/off switch for the entire plugin.
+    // Master on/off switch for transforms / generation / auto-queue / runtime.
+    // false = no derivatives created; Twig url/img/picture fall back to the original image
+    // so templates keep rendering without errors.
     'enabled' => true,
 
     // Profile name used when Twig/CLI omit an explicit profile.

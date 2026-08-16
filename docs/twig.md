@@ -2,6 +2,8 @@
 
 Use the **variable API** only (`craft.superImages`). Twig filters are not provided.
 
+When `enabled => false` in `config/super-images.php`, Twig helpers still run but emit the **original** Asset/local/remote URL (no transforms, no errors). Use `craft.superImages.isEnabled()` if a template needs to branch.
+
 With `generateBeforePageLoad = true`, missing derivatives are created during the page request (same idea as Craft transforms). With `false`, Twig emits signed action URLs and generation happens on the first browser hit.
 
 ---

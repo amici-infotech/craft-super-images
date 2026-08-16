@@ -75,6 +75,12 @@ class PlaygroundController extends Controller
         $templateVars = $this->templateVars($settings, $posted);
 
         try {
+            if (!Plugin::getInstance()->isEnabled()) {
+                throw new BadRequestHttpException(
+                    'Super Images is disabled (`enabled => false`). Twig still falls back to original images.',
+                );
+            }
+
             if ($assetId <= 0) {
                 throw new BadRequestHttpException('Please choose an image asset.');
             }

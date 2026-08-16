@@ -20,7 +20,7 @@ Every key in the example file is commented. Live servers are assumed to be **Ubu
 
 | Key | Purpose |
 |---|---|
-| `enabled` | Master switch |
+| `enabled` | Master switch. When `false`: no generate/CLI/runtime/auto-queue; Twig still emits original image URLs so pages do not break |
 | `defaultProfile` / `defaultFormat` | Twig/CLI defaults |
 | `driver` | `auto` \| `libvips` \| `imagick` \| `gd` |
 | `delivery.generateBeforePageLoad` | Like Craft transforms: generate during Twig (`true`) or use runtime action URL when missing (`false`) |

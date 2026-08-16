@@ -25,9 +25,22 @@ use Twig\Markup;
  * Super Images Variable
  *
  * Twig API exposed as `craft.superImages`.
+ *
+ * When the plugin is disabled (`enabled => false`), helpers do not transform;
+ * they fall back to the original Asset/local/remote URL so templates keep working.
  */
 class SuperImagesVariable
 {
+    /**
+     * Whether Super Images processing is active.
+     *
+     * @return bool True when transforms/generation are enabled.
+     */
+    public function isEnabled(): bool
+    {
+        return Plugin::getInstance()->isEnabled();
+    }
+
     /**
      * Generate a derivative and return the full result object.
      *
@@ -37,6 +50,8 @@ class SuperImagesVariable
      * @param array<string, mixed> $options Generation options.
      *
      * @return GenerationResult The generation outcome including URL and diagnostics.
+     *
+     * @throws SuperImagesException When the plugin is disabled or generation fails.
      */
     public function generate(Asset|string|int $source, array $options = []): GenerationResult
     {
@@ -53,7 +68,7 @@ class SuperImagesVariable
      * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
      * @param array<string, mixed> $options Generation options.
      *
-     * @return GenerationResult|null The result, or null when generation fails.
+     * @return GenerationResult|null The result, or null when generation fails / plugin disabled.
      */
     public function tryGenerate(Asset|string|int $source, array $options = []): ?GenerationResult
     {
@@ -69,6 +84,8 @@ class SuperImagesVariable
     /**
      * Plan and return a delivery URL (storage URL, or signed action URL when deferred).
      *
+     * When the plugin is disabled, returns the original source URL instead.
+     *
      * When planning fails for a missing or invalid Craft asset, and
      * `policies.fallback` is enabled with a distinct fallback asset ID,
      * retries once using that asset while preserving profile/variant/format options.
@@ -78,15 +95,21 @@ class SuperImagesVariable
      * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
      * @param array<string, mixed> $options Planning options.
      *
-     * @return string The resolved delivery URL.
+     * @return string The resolved delivery URL (or original URL when disabled).
      */
     public function url(Asset|string|int $source, array $options = []): string
     {
+        if (!$this->isEnabled()) {
+            return $this->originalUrl($source) ?? '';
+        }
+
         return $this->plan($source, $options)->deliveryUrl;
     }
 
     /**
      * Plan and return an `<img>` tag for one derivative.
+     *
+     * When the plugin is disabled, emits `<img src="{original}">` so pages keep rendering.
      *
      * Applies the same fallback policy as {@see url()} when planning fails.
      * Emits a single `src` (no `srcset`). Use {@see picture()} for responsive multi-width output.
@@ -107,12 +130,16 @@ class SuperImagesVariable
      */
     public function img(Asset|string|int $source, array $options = []): Markup
     {
+        if (!$this->isEnabled()) {
+            return $this->renderOriginalImg($source, $options);
+        }
+
         try {
             $planned = $this->plan($source, $options);
         } catch (SuperImagesException $exception) {
             Craft::warning($exception->getMessage(), 'super-images');
 
-            return new Markup('', 'UTF-8');
+            return $this->renderOriginalImg($source, $options);
         }
 
         [$width, $height] = $this->resolveLayoutDimensions($source, $planned);
@@ -164,6 +191,11 @@ class SuperImagesVariable
      */
     public function picture(Asset|string|int $source, array $options = []): Markup
     {
+        if (!$this->isEnabled()) {
+            // Keep sites rendering: one <img> with the original (no empty <picture>).
+            return $this->renderOriginalImg($source, $options);
+        }
+
         $plugin = Plugin::getInstance();
         $profileName = (string) ($options['profile'] ?? $plugin->getSettings()->defaultProfile);
         $profile = $plugin->getSettings()->profiles[$profileName] ?? [];
@@ -283,6 +315,10 @@ class SuperImagesVariable
      */
     public function srcset(Asset|string|int $source, array $options = []): string
     {
+        if (!$this->isEnabled()) {
+            return $this->originalUrl($source) ?? '';
+        }
+
         $plugin = Plugin::getInstance();
         $profileName = (string) ($options['profile'] ?? $plugin->getSettings()->defaultProfile);
         $format = (string) ($options['format'] ?? $plugin->getSettings()->defaultFormat);
@@ -461,6 +497,68 @@ class SuperImagesVariable
         }
 
         return '';
+    }
+
+    /**
+     * Public URL of the original source (no Super Images transform).
+     *
+     * Used when the plugin is disabled so Twig templates keep showing images.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     *
+     * @return string|null Original URL, or null when it cannot be resolved.
+     */
+    private function originalUrl(Asset|string|int $source): ?string
+    {
+        $asset = $this->resolveAsset($source);
+        if ($asset !== null) {
+            $url = $asset->getUrl();
+
+            return is_string($url) && $url !== '' ? $url : null;
+        }
+
+        if (is_string($source) && $source !== '') {
+            return $source;
+        }
+
+        return null;
+    }
+
+    /**
+     * Builds a plain `<img>` pointing at the original source URL.
+     *
+     * @param Asset|string|int $source Asset, asset ID, local path, or remote URL.
+     * @param array<string, mixed> $options Twig HTML attribute options.
+     *
+     * @return Markup `<img>` markup, or empty markup when no original URL exists.
+     */
+    private function renderOriginalImg(Asset|string|int $source, array $options = []): Markup
+    {
+        $url = $this->originalUrl($source);
+        if ($url === null || $url === '') {
+            return new Markup('', 'UTF-8');
+        }
+
+        $asset = $this->resolveAsset($source);
+        $defaults = [
+            'alt' => (string) ($options['alt'] ?? $this->defaultAlt($source)),
+            'loading' => $options['loading'] ?? 'lazy',
+        ];
+
+        $srcW = $asset !== null ? (int) $asset->getWidth() : 0;
+        $srcH = $asset !== null ? (int) $asset->getHeight() : 0;
+        if ($srcW > 0) {
+            $defaults['width'] = $srcW;
+        }
+        if ($srcH > 0) {
+            $defaults['height'] = $srcH;
+        }
+
+        $attrs = $this->mergeHtmlAttributes($defaults, $this->extractHtmlAttributes($options), [
+            'src' => $url,
+        ]);
+
+        return new Markup(Html::tag('img', '', $attrs), 'UTF-8');
     }
 
     /**

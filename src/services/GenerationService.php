@@ -13,6 +13,7 @@ use amici\SuperImages\drivers\AbstractDriver;
 use amici\SuperImages\events\GenerationEvent;
 use amici\SuperImages\exceptions\ProcessingException;
 use amici\SuperImages\exceptions\SourceException;
+use amici\SuperImages\exceptions\SuperImagesException;
 use amici\SuperImages\jobs\OptimizeDerivativeJob;
 use amici\SuperImages\models\EffectiveConfig;
 use amici\SuperImages\models\EncodedImage;
@@ -134,6 +135,8 @@ class GenerationService extends Component
         if ($units === []) {
             return [];
         }
+
+        $this->assertPluginEnabled();
 
         $plugin = Plugin::getInstance();
         $results = [];
@@ -260,6 +263,8 @@ class GenerationService extends Component
         bool $recordIndex,
         ?SourceImage $sharedSource,
     ): GenerationResult {
+        $this->assertPluginEnabled();
+
         $plugin = Plugin::getInstance();
         $started = microtime(true);
         $handle = null;
@@ -809,5 +814,19 @@ class GenerationService extends Component
         $format = strtolower($format);
 
         return $format === 'jpg' ? 'jpeg' : $format;
+    }
+
+    /**
+     * Rejects generation when the master `enabled` switch is off.
+     *
+     * @throws SuperImagesException When Super Images is disabled.
+     */
+    private function assertPluginEnabled(): void
+    {
+        if (!Plugin::getInstance()->isEnabled()) {
+            throw new SuperImagesException(
+                'Super Images is disabled (`enabled => false` in config/super-images.php).',
+            );
+        }
     }
 }
