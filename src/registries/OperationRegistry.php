@@ -22,6 +22,7 @@ use amici\SuperImages\operations\composition\Background;
 use amici\SuperImages\operations\composition\Border;
 use amici\SuperImages\operations\composition\Overlay;
 use amici\SuperImages\operations\composition\Padding;
+use amici\SuperImages\operations\composition\Text;
 use amici\SuperImages\operations\composition\Watermark;
 use amici\SuperImages\operations\effects\Blur;
 use amici\SuperImages\operations\effects\Sharpen;
@@ -81,6 +82,7 @@ class OperationRegistry extends Component
         $this->register('border', Border::class);
         $this->register('watermark', Watermark::class);
         $this->register('overlay', Overlay::class);
+        $this->register('text', Text::class);
 
         $event = new RegisterOperationsEvent();
         $this->trigger(self::EVENT_REGISTER_OPERATIONS, $event);

@@ -85,6 +85,39 @@ class ExistenceMarkerStore extends Component
     }
 
     /**
+     * Reads a marker payload for the given identity when present.
+     *
+     * @param string $identity Stable derivative identity hash or key.
+     *
+     * @return array{identity?: string, createdAt?: int, metadata?: array<string, mixed>}|null
+     */
+    public function read(string $identity): ?array
+    {
+        if (!$this->isEnabled()) {
+            return null;
+        }
+
+        $path = $this->markerPath($identity);
+        if (!is_file($path) || !is_readable($path)) {
+            return null;
+        }
+
+        $raw = file_get_contents($path);
+        if ($raw === false || $raw === '') {
+            return null;
+        }
+
+        try {
+            /** @var array{identity?: string, createdAt?: int, metadata?: array<string, mixed>} $payload */
+            $payload = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        return is_array($payload) ? $payload : null;
+    }
+
+    /**
      * Deletes the marker file for the given derivative identity when present.
      *
      * @param string $identity Stable derivative identity hash or key.

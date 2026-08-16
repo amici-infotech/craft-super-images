@@ -14,6 +14,7 @@ namespace amici\SuperImages\variables;
 use amici\SuperImages\exceptions\SuperImagesException;
 use amici\SuperImages\models\GenerationRequest;
 use amici\SuperImages\models\GenerationResult;
+use amici\SuperImages\models\OperationDefinition;
 use amici\SuperImages\models\PlannedDelivery;
 use amici\SuperImages\Plugin;
 use Craft;
@@ -475,8 +476,51 @@ class SuperImagesVariable
             profile: isset($options['profile']) ? (string) $options['profile'] : null,
             variant: isset($options['variant']) ? (string) $options['variant'] : null,
             format: isset($options['format']) ? (string) $options['format'] : null,
+            operationOverrides: $this->normalizeOperations($options['operations'] ?? null),
             storageAdapter: isset($options['storage']) ? (string) $options['storage'] : null,
         );
+    }
+
+    /**
+     * Normalizes Twig `operations` option into OperationDefinition list.
+     *
+     * Each item may be an OperationDefinition or an array with `type`/`name`/`operation`
+     * plus option keys (e.g. `{ type: 'fit', width: 600 }`, `{ type: 'grayscale' }`).
+     *
+     * @param mixed $operations Raw Twig operations value.
+     *
+     * @return list<OperationDefinition>|null Normalized overrides, or null when omitted.
+     */
+    private function normalizeOperations(mixed $operations): ?array
+    {
+        if ($operations === null) {
+            return null;
+        }
+
+        if (!is_array($operations)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($operations as $op) {
+            if ($op instanceof OperationDefinition) {
+                $normalized[] = $op;
+                continue;
+            }
+
+            if (!is_array($op)) {
+                continue;
+            }
+
+            $def = OperationDefinition::fromArray($op);
+            if ($def->type === '') {
+                continue;
+            }
+
+            $normalized[] = $def;
+        }
+
+        return $normalized === [] ? null : $normalized;
     }
 
     /**
@@ -773,6 +817,7 @@ class SuperImagesVariable
             'format',
             'formats',
             'storage',
+            'operations',
             'preview',
             'thumbnail',
             // convenience defaults handled separately

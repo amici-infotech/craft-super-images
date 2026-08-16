@@ -17,6 +17,8 @@ use amici\SuperImages\models\EncodedImage;
 use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\models\SourceImage;
 use Imagick;
+use ImagickDraw;
+use ImagickPixel;
 
 /**
  * Imagick Driver
@@ -107,7 +109,7 @@ final class ImagickDriver extends AbstractDriver
             operations: [
                 'resize', 'crop', 'fit', 'fill', 'scale', 'rotate', 'flip',
                 'brightness', 'contrast', 'saturation', 'grayscale', 'sepia', 'invert',
-                'sharpen', 'blur', 'background', 'padding', 'border', 'watermark', 'overlay',
+                'sharpen', 'blur', 'background', 'padding', 'border', 'watermark', 'overlay', 'text',
             ],
             formats: ['jpeg', 'jpg', 'png', 'webp', 'avif'],
             supportsAlpha: true,
@@ -486,6 +488,8 @@ final class ImagickDriver extends AbstractDriver
         $imagick = clone $handle->resource;
         $canvas = new Imagick();
         $canvas->newImage($handle->width, $handle->height, new \ImagickPixel($color));
+        $format = $imagick->getImageFormat() ?: 'PNG';
+        $canvas->setImageFormat($format);
         $canvas->compositeImage($imagick, Imagick::COMPOSITE_OVER, 0, 0);
 
         return $this->handleFromImagick($canvas);
@@ -505,11 +509,14 @@ final class ImagickDriver extends AbstractDriver
      */
     public function padding(ImageHandle $handle, int $top, int $right, int $bottom, int $left, string $color = '#ffffff'): ImageHandle
     {
+        /** @var Imagick $source */
+        $source = $handle->resource;
         $width = $handle->width + $left + $right;
         $height = $handle->height + $top + $bottom;
         $canvas = new Imagick();
         $canvas->newImage($width, $height, new \ImagickPixel($color));
-        $canvas->compositeImage($handle->resource, Imagick::COMPOSITE_OVER, $left, $top);
+        $canvas->setImageFormat($source->getImageFormat() ?: 'PNG');
+        $canvas->compositeImage($source, Imagick::COMPOSITE_OVER, $left, $top);
 
         return $this->handleFromImagick($canvas);
     }
@@ -535,17 +542,137 @@ final class ImagickDriver extends AbstractDriver
      * @param string $sourcePath Absolute path to the watermark image file.
      * @param string $position Overlay anchor in the form "xAlign-yAlign".
      * @param float $opacity Alpha multiplier from 0.0 (transparent) to 1.0 (opaque).
+     * @param bool $cover When true, scale the mark to exactly match the base image size (full-bleed).
      *
      * @return ImageHandle Imagick handle with the watermark composited on top.
      */
-    public function watermark(ImageHandle $handle, string $sourcePath, string $position = 'bottom-right', float $opacity = 0.5): ImageHandle
-    {
+    public function watermark(
+        ImageHandle $handle,
+        string $sourcePath,
+        string $position = 'bottom-right',
+        float $opacity = 0.5,
+        bool $cover = false,
+    ): ImageHandle {
         /** @var Imagick $imagick */
         $imagick = clone $handle->resource;
         $mark = new Imagick($sourcePath);
+        if ($cover) {
+            $mark->resizeImage($handle->width, $handle->height, Imagick::FILTER_LANCZOS, 1);
+            $position = 'center-center';
+        }
         $mark->evaluateImage(Imagick::EVALUATE_MULTIPLY, $opacity, Imagick::CHANNEL_ALPHA);
         [$x, $y] = $this->overlayPosition($handle, $mark, $position);
         $imagick->compositeImage($mark, Imagick::COMPOSITE_OVER, $x, $y);
+
+        return $this->handleFromImagick($imagick);
+    }
+
+    /**
+     * Draws text onto the image (optional diagonal / full-cover watermark style).
+     *
+     * @param ImageHandle $handle Source Imagick handle.
+     * @param string $content Text to render.
+     * @param array<string, mixed> $options Font, size, color, position, opacity, angle, cover, padding.
+     *
+     * @return ImageHandle Imagick handle with text composited on top.
+     */
+    public function text(ImageHandle $handle, string $content, array $options = []): ImageHandle
+    {
+        /** @var Imagick $imagick */
+        $imagick = clone $handle->resource;
+        $width = $handle->width;
+        $height = $handle->height;
+
+        $color = (string) ($options['color'] ?? '#ffffff');
+        $opacity = (float) ($options['opacity'] ?? 0.5);
+        $opacity = max(0.0, min(1.0, $opacity));
+        $position = (string) ($options['position'] ?? 'center-center');
+        $padding = (int) ($options['padding'] ?? 24);
+        $cover = filter_var($options['cover'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $font = isset($options['font']) ? (string) $options['font'] : null;
+        $explicitSize = isset($options['size']) ? (float) $options['size'] : null;
+
+        $angleOption = $options['angle'] ?? ($cover ? 'diagonal' : 0);
+        $angle = is_string($angleOption) && strtolower($angleOption) === 'diagonal'
+            ? -rad2deg(atan2($height, $width))
+            : (float) $angleOption;
+
+        $rgba = $this->colorWithOpacity($color, $opacity);
+        $stroke = $this->colorWithOpacity('#000000', min(1.0, $opacity * 0.55));
+
+        $draw = new ImagickDraw();
+        if ($font !== null && $font !== '' && is_readable($font)) {
+            $draw->setFont($font);
+        } else {
+            $defaultFont = $this->defaultFontPath();
+            if ($defaultFont !== null) {
+                $draw->setFont($defaultFont);
+            }
+        }
+        $draw->setTextAntialias(true);
+        $draw->setTextAlignment(Imagick::ALIGN_LEFT);
+        $draw->setFillColor(new ImagickPixel($rgba));
+        $draw->setStrokeColor(new ImagickPixel($stroke));
+        $draw->setStrokeWidth(max(1.0, ($explicitSize ?? 48) / 40));
+
+        $probe = new Imagick();
+        $probe->newImage(8, 8, new ImagickPixel('none'));
+
+        $fontSize = $explicitSize ?? 48.0;
+        if ($cover || $explicitSize === null && strtolower((string) $angleOption) === 'diagonal') {
+            $diag = hypot($width, $height);
+            $target = $diag * 0.78;
+            $lo = 10.0;
+            $hi = max(400.0, $diag);
+            $fontSize = 60.0;
+            for ($i = 0; $i < 20; $i++) {
+                $mid = ($lo + $hi) / 2.0;
+                $draw->setFontSize($mid);
+                $metrics = $probe->queryFontMetrics($draw, $content);
+                $tw = (float) $metrics['textWidth'];
+                $th = (float) max($metrics['textHeight'], $metrics['ascender'] - $metrics['descender']);
+                $rad = deg2rad(abs($angle));
+                $bw = $tw * cos($rad) + $th * sin($rad);
+                $bh = $tw * sin($rad) + $th * cos($rad);
+                if ($bw <= $width * 0.96 && $bh <= $height * 0.96 && $tw <= $target) {
+                    $lo = $mid;
+                    $fontSize = $mid;
+                } else {
+                    $hi = $mid;
+                }
+            }
+        }
+
+        $draw->setFontSize($fontSize);
+        $draw->setStrokeWidth(max(1.0, $fontSize / 48));
+        $metrics = $probe->queryFontMetrics($draw, $content);
+        $tw = (int) ceil($metrics['textWidth'] + 8);
+        $th = (int) ceil(max($metrics['textHeight'], $metrics['ascender'] - $metrics['descender']) + 8);
+
+        $strip = new Imagick();
+        $strip->newImage(max(1, $tw), max(1, $th), new ImagickPixel('none'));
+        $strip->setImageFormat('png32');
+        $strip->setImageAlphaChannel(Imagick::ALPHACHANNEL_SET);
+        $draw->annotation(4, (int) round($metrics['ascender'] + 4), $content);
+        $strip->drawImage($draw);
+
+        if (abs($angle) > 0.01) {
+            $strip->rotateImage(new ImagickPixel('none'), $angle);
+            $strip->setImagePage(0, 0, 0, 0);
+        }
+
+        if ($cover || strtolower((string) ($options['position'] ?? '')) === 'center-center' || !isset($options['position'])) {
+            $x = (int) round(($width - $strip->getImageWidth()) / 2);
+            $y = (int) round(($height - $strip->getImageHeight()) / 2);
+        } else {
+            [$x, $y] = $this->overlayPosition($handle, $strip, $position);
+            $x += $this->paddingOffsetX($position, $padding);
+            $y += $this->paddingOffsetY($position, $padding);
+        }
+
+        $imagick->compositeImage($strip, Imagick::COMPOSITE_OVER, $x, $y);
+        $probe->clear();
+        $strip->clear();
 
         return $this->handleFromImagick($imagick);
     }
@@ -575,6 +702,101 @@ final class ImagickDriver extends AbstractDriver
     }
 
     /**
+     * Resolves a CSS hex/rgb color to an Imagick rgba() string with opacity.
+     *
+     * @param string $color Hex (`#rgb` / `#rrggbb`) or Imagick color string.
+     * @param float $opacity Alpha from 0.0 to 1.0.
+     *
+     * @return string Imagick-compatible color string.
+     */
+    private function colorWithOpacity(string $color, float $opacity): string
+    {
+        $color = trim($color);
+        $opacity = max(0.0, min(1.0, $opacity));
+
+        if (preg_match('/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', $color, $matches) === 1) {
+            $hex = $matches[1];
+            if (strlen($hex) === 3) {
+                $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+            }
+            $r = hexdec(substr($hex, 0, 2));
+            $g = hexdec(substr($hex, 2, 2));
+            $b = hexdec(substr($hex, 4, 2));
+
+            return sprintf('rgba(%d,%d,%d,%.4f)', $r, $g, $b, $opacity);
+        }
+
+        if (str_starts_with(strtolower($color), 'rgba(') || str_starts_with(strtolower($color), 'rgb(')) {
+            return $color;
+        }
+
+        return sprintf('rgba(255,255,255,%.4f)', $opacity);
+    }
+
+    /**
+     * Picks a readable system font path for text rendering when none is configured.
+     *
+     * @return string|null Absolute font file path, or null to use Imagick defaults.
+     */
+    private function defaultFontPath(): ?string
+    {
+        $candidates = [
+            '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+            '/System/Library/Fonts/Supplemental/Arial.ttf',
+            '/Library/Fonts/Arial.ttf',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        ];
+
+        foreach ($candidates as $path) {
+            if (is_readable($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Horizontal padding nudge for named watermark positions.
+     *
+     * @param string $position Position slug such as "left-top" or "bottom-right".
+     * @param int $padding Padding in pixels.
+     *
+     * @return int Signed X offset.
+     */
+    private function paddingOffsetX(string $position, int $padding): int
+    {
+        [$xAlign] = $this->parsePosition($position);
+
+        return match ($xAlign) {
+            'left' => $padding,
+            'right' => -$padding,
+            default => 0,
+        };
+    }
+
+    /**
+     * Vertical padding nudge for named watermark positions.
+     *
+     * @param string $position Position slug such as "left-top" or "bottom-right".
+     * @param int $padding Padding in pixels.
+     *
+     * @return int Signed Y offset.
+     */
+    private function paddingOffsetY(string $position, int $padding): int
+    {
+        [, $yAlign] = $this->parsePosition($position);
+
+        return match ($yAlign) {
+            'top' => $padding,
+            'bottom' => -$padding,
+            default => 0,
+        };
+    }
+
+    /**
      * Wraps an {@see Imagick} instance in a plugin {@see ImageHandle}.
      *
      * @param Imagick $imagick Loaded or transformed Imagick image.
@@ -585,7 +807,21 @@ final class ImagickDriver extends AbstractDriver
     {
         $width = $imagick->getImageWidth();
         $height = $imagick->getImageHeight();
-        $mime = $imagick->getImageMimeType() ?: 'image/png';
+        try {
+            $mime = $imagick->getImageMimeType() ?: 'image/png';
+        } catch (\ImagickException) {
+            $format = strtolower((string)$imagick->getImageFormat());
+            if ($format === '') {
+                $imagick->setImageFormat('png');
+                $format = 'png';
+            }
+            $mime = match ($format) {
+                'jpg', 'jpeg' => 'image/jpeg',
+                'webp' => 'image/webp',
+                'avif' => 'image/avif',
+                default => 'image/png',
+            };
+        }
 
         return new ImageHandle(
             $this->name(),

@@ -9,6 +9,7 @@
 namespace amici\SuperImages\services;
 
 use amici\SuperImages\contracts\ImageDriverInterface;
+use amici\SuperImages\contracts\StorageAdapterInterface;
 use amici\SuperImages\drivers\AbstractDriver;
 use amici\SuperImages\events\GenerationEvent;
 use amici\SuperImages\exceptions\ProcessingException;
@@ -27,6 +28,7 @@ use amici\SuperImages\models\OperationDefinition;
 use amici\SuperImages\models\SourceImage;
 use amici\SuperImages\models\StorageWriteOptions;
 use amici\SuperImages\Plugin;
+use amici\SuperImages\storage\LocalStorageAdapter;
 use Craft;
 use yii\base\Component;
 
@@ -293,15 +295,23 @@ class GenerationService extends Component
                 $markerExists = $plugin->getExistenceMarkers()->exists($identity);
 
                 if ($objectExists || $markerExists) {
+                    [$width, $height, $size] = $this->resolveExistingDerivativeMeta(
+                        $adapter,
+                        $storagePath,
+                        $identity,
+                        $objectExists,
+                        $markerExists,
+                    );
+
                     $result = new GenerationResult(
                         success: true,
                         identity: $identity,
                         storagePath: $storagePath,
                         url: $storageUrl,
                         format: $definition->format,
-                        width: 0,
-                        height: 0,
-                        size: 0,
+                        width: $width,
+                        height: $height,
+                        size: $size,
                         mime: $this->mimeFromFormat($definition->format),
                         durationMs: (microtime(true) - $started) * 1000,
                         diagnostics: [
@@ -507,6 +517,9 @@ class GenerationService extends Component
                     'path' => $storagePath,
                     'format' => $definition->format,
                     'adapter' => $adapter->name(),
+                    'width' => $encoded->width,
+                    'height' => $encoded->height,
+                    'size' => $storageObject->size,
                 ];
 
                 if ($request->assetId !== null) {
@@ -781,6 +794,56 @@ class GenerationService extends Component
             'gif' => str_starts_with($header, 'GIF8'),
             default => $encoded->mime === $expectedMime,
         };
+    }
+
+    /**
+     * Resolve width/height/size for a derivative that already exists (cache hit).
+     *
+     * Prefers local filesystem image headers; falls back to existence-marker metadata.
+     *
+     * @param StorageAdapterInterface $adapter Selected storage adapter.
+     * @param string $storagePath Relative storage path.
+     * @param string $identity Derivative identity key.
+     * @param bool $objectExists Whether the storage object exists.
+     * @param bool $markerExists Whether an existence marker exists.
+     *
+     * @return array{0: int, 1: int, 2: int} Tuple of [width, height, size].
+     */
+    private function resolveExistingDerivativeMeta(
+        StorageAdapterInterface $adapter,
+        string $storagePath,
+        string $identity,
+        bool $objectExists,
+        bool $markerExists,
+    ): array {
+        $width = 0;
+        $height = 0;
+        $size = 0;
+
+        if ($objectExists && $adapter instanceof LocalStorageAdapter) {
+            $meta = $adapter->imageMeta($storagePath);
+            if ($meta !== null) {
+                $width = $meta['width'];
+                $height = $meta['height'];
+                $size = $meta['size'];
+            }
+        }
+
+        if (($width <= 0 || $height <= 0 || $size <= 0) && $markerExists) {
+            $payload = Plugin::getInstance()->getExistenceMarkers()->read($identity);
+            $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+            if ($width <= 0) {
+                $width = (int) ($metadata['width'] ?? 0);
+            }
+            if ($height <= 0) {
+                $height = (int) ($metadata['height'] ?? 0);
+            }
+            if ($size <= 0) {
+                $size = (int) ($metadata['size'] ?? 0);
+            }
+        }
+
+        return [$width, $height, $size];
     }
 
     /**

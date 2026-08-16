@@ -18,8 +18,11 @@ use amici\SuperImages\operations\AbstractOperation;
 /**
  * Watermark Operation
  *
- * Composites a watermark image onto the base image at a named position.
- * Supported options: `sourcePath` or `path`, `position` (default: "bottom-right"), `opacity` (default: 0.5).
+ * Composites a watermark onto the base image. Prefer an image source (`path` /
+ * `sourcePath`), or pass `text` / `content` for a text watermark (Imagick only).
+ * Supported options: `sourcePath` or `path`, `text` or `content`, `position`
+ * (default: "bottom-right"), `opacity` (default: 0.5), `cover`, `color`, `size`,
+ * `font`, `angle` (`"diagonal"` or degrees).
  * Supported drivers: Imagick only.
  */
 final class Watermark extends AbstractOperation
@@ -42,21 +45,33 @@ final class Watermark extends AbstractOperation
      *
      * @return ImageHandle The watermarked image handle.
      *
-     * @throws WatermarkSourceException When the watermark source path is missing or unreadable.
+     * @throws WatermarkSourceException When neither a readable image path nor text is provided.
      */
     public function apply(ImageHandle $handle, ImageDriverInterface $driver): ImageHandle
     {
-        $sourcePath = (string)($this->options['sourcePath'] ?? $this->options['path'] ?? '');
-        if ($sourcePath === '' || !is_readable($sourcePath)) {
-            throw new WatermarkSourceException('Watermark source path is missing or unreadable.');
+        $sourcePath = (string) ($this->options['sourcePath'] ?? $this->options['path'] ?? '');
+        $text = (string) ($this->options['text'] ?? $this->options['content'] ?? '');
+        $hasPath = $sourcePath !== '' && is_readable($sourcePath);
+        $hasText = trim($text) !== '';
+
+        if (!$hasPath && !$hasText) {
+            throw new WatermarkSourceException(
+                'Watermark requires a readable image `path`/`sourcePath`, or non-empty `text`/`content`.',
+            );
         }
 
-        $position = (string)($this->options['position'] ?? 'bottom-right');
-        $opacity = (float)($this->options['opacity'] ?? 0.5);
+        if (!$driver instanceof ImagickDriver) {
+            throw new UnsupportedOperationException('Watermark is not supported by the selected driver.');
+        }
 
-        return match (true) {
-            $driver instanceof ImagickDriver => $driver->watermark($handle, $sourcePath, $position, $opacity),
-            default => throw new UnsupportedOperationException('Watermark is not supported by the selected driver.'),
-        };
+        if ($hasText && !$hasPath) {
+            return $driver->text($handle, $text, $this->options);
+        }
+
+        $position = (string) ($this->options['position'] ?? 'bottom-right');
+        $opacity = (float) ($this->options['opacity'] ?? 0.5);
+        $cover = filter_var($this->options['cover'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        return $driver->watermark($handle, $sourcePath, $position, $opacity, $cover);
     }
 }

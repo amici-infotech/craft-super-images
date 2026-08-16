@@ -152,6 +152,30 @@ final class LocalStorageAdapter implements StorageAdapterInterface
     }
 
     /**
+     * Returns width/height/size for an existing local derivative when available.
+     *
+     * @param string $path Relative storage path.
+     *
+     * @return array{width: int, height: int, size: int}|null Null when the file is missing.
+     */
+    public function imageMeta(string $path): ?array
+    {
+        $fullPath = $this->fullPath($path);
+        if (!is_file($fullPath)) {
+            return null;
+        }
+
+        $size = (int) filesize($fullPath);
+        $info = @getimagesize($fullPath);
+
+        return [
+            'width' => is_array($info) ? (int) ($info[0] ?? 0) : 0,
+            'height' => is_array($info) ? (int) ($info[1] ?? 0) : 0,
+            'size' => $size,
+        ];
+    }
+
+    /**
      * Deletes the object at the given relative path when it exists.
      *
      * @param string $path Relative storage path.
