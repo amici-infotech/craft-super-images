@@ -1,0 +1,285 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Configuration — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Project config</p>
+  <h2>Configuration</h2>
+  <p class="mt-2">
+    Full schema for <code>config/super-images.php</code>. Copy what you need; prefer env vars for secrets and binary paths.
+    Live effective values also appear in CP → Super Images → Settings.
+  </p>
+{% endblock %}
+
+{% block content %}
+  <div class="mb-8 flex flex-wrap gap-2" x-data>
+    {% set jumps = [
+      { id: 'cfg-core', label: 'Core' },
+      { id: 'cfg-delivery', label: 'Delivery' },
+      { id: 'cfg-autogen', label: 'Auto-generate' },
+      { id: 'cfg-sources', label: 'Sources' },
+      { id: 'cfg-runtime', label: 'Runtime' },
+      { id: 'cfg-storage', label: 'Storage' },
+      { id: 'cfg-encoders', label: 'Encoders' },
+      { id: 'cfg-optimizers', label: 'Optimizers' },
+      { id: 'cfg-profiles', label: 'Profiles' },
+      { id: 'cfg-volumes', label: 'Volumes / fields' },
+      { id: 'cfg-cleanup', label: 'Cleanup' },
+      { id: 'cfg-policies', label: 'Policies' },
+    ] %}
+    {% for j in jumps %}
+      <a href="#{{ j.id }}" class="rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-medium text-zinc-600 transition hover:border-teal-500/50 hover:text-teal-800 dark:border-zinc-700 dark:bg-night-900 dark:text-zinc-400 dark:hover:text-teal-200">{{ j.label }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="space-y-8">
+    <section id="cfg-core" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Core</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">Master switch, defaults, and image library preference.</p>
+      {{ ui.codeBlock("return [
+    'enabled' => true,
+    'defaultProfile' => 'responsive',
+    'defaultFormat' => 'webp',
+    // auto | libvips | imagick | gd
+    'driver' => 'auto',
+];", 'php') }}
+    </section>
+
+    <section id="cfg-delivery" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Delivery</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+        <code>generateBeforePageLoad</code> mirrors Craft’s transform timing. When false, missing files use signed runtime URLs.
+        Thumbnail settings feed tiny preview derivatives.
+      </p>
+      {{ ui.codeBlock("'delivery' => [
+    'generateBeforePageLoad' => true,
+    'thumbnail' => [
+        'enabled' => true,
+        'width' => 32,
+        'format' => 'jpg',
+        'quality' => 50,
+        'variant' => 'thumb',
+    ],
+],", 'php') }}
+    </section>
+
+    <section id="cfg-autogen" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Auto-generate</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">Queue (or inline) generation when Assets are uploaded, replaced, or focal-point changes.</p>
+      {{ ui.codeBlock("'autoGenerate' => [
+    'enabled' => true,
+    'onUpload' => true,
+    'onReplace' => true,
+    'onFocalPointChange' => true,
+    'queue' => true,
+    'disableDuringImport' => true,
+],", 'php') }}
+    </section>
+
+    <section id="cfg-sources" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Sources</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+        Non-Asset originals. Remote hosts must be allow-listed (wildcards like <code>*.picsum.photos</code> are supported).
+        Required for the portable CDN demos on this site.
+      </p>
+      {{ ui.codeBlock("'sources' => [
+    'local' => [
+        'enabled' => true,
+        'allowedRoots' => [
+            '@webroot/images',
+            '@webroot/uploads',
+        ],
+    ],
+    'remote' => [
+        'enabled' => true,
+        'allowedHosts' => [
+            'picsum.photos',
+            '*.picsum.photos',
+        ],
+        'timeout' => 10,
+        'maxBytes' => 25_000_000,
+        'maxRedirects' => 3,
+    ],
+],", 'php') }}
+    </section>
+
+    <section id="cfg-runtime" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Runtime (signed lazy generate)</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">Used when <code>generateBeforePageLoad</code> is false. Caps apply to <em>requested</em> dimensions, not source size.</p>
+      {{ ui.codeBlock("use craft\\helpers\\App;
+
+'runtime' => [
+    'enabled' => true,
+    'signingSecret' => App::env('SUPER_IMAGES_SIGNING_SECRET'),
+    'urlTtl' => 3600,
+    'maxWidth' => 4096,
+    'maxHeight' => 4096,
+    'maxPixels' => 20_000_000,
+],", 'php') }}
+    </section>
+
+    <section id="cfg-storage" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Storage</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">Derivatives live outside Craft Volumes. Local adapter for webroot transforms; optional S3-compatible remote.</p>
+      {{ ui.codeBlock("'storage' => [
+    'default' => App::env('SUPER_IMAGES_STORAGE') ?: 'local',
+    'markers' => [
+        'enabled' => true,
+        'path' => '@storage/super-images/markers',
+    ],
+    'adapters' => [
+        'local' => [
+            'type' => 'local',
+            'path' => '@webroot/transforms/super-images',
+            'baseUrl' => '@web/transforms/super-images',
+        ],
+    ],
+    // Settings-aware paths: {transformHash} changes when ops/encode/driver change
+    // so editing sepia/crop/quality never reuses a stale cached file.
+    'naming' => [
+        'assetPath' => '{folderHash}/{transformHash}/{assetId}/{basename}-{variant}.{ext}',
+        'path' => '{identityShard}/{basename}-{variant}.{ext}',
+        'transformHashLength' => 16,
+        'includeVolumeInFolderHash' => false,
+        // Compact alternative:
+        // 'assetPath' => '{transformFolderHash}/{assetId}/{basename}-{variant}.{ext}',
+    ],
+],", 'php') }}
+      <p class="mt-3 text-sm text-zinc-600 dark:text-zinc-500">
+        Edit naming in CP → Super Images → Settings, or in <code>config/super-images.php</code>.
+        Tokens include <code>{folderHash}</code>, <code>{transformHash}</code>, <code>{transformFolderHash}</code>,
+        <code>{identity}</code>, <code>{assetId}</code>, <code>{basename}</code>, <code>{variant}</code>, <code>{profile}</code>, <code>{ext}</code>.
+      </p>
+    </section>
+
+    <section id="cfg-encoders" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Encoders</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">Native driver encode quality (GD / Imagick / Libvips). Separate from binary optimizers.</p>
+      {{ ui.codeBlock("'encoders' => [
+    'jpeg' => ['quality' => 80],
+    'webp' => ['quality' => 80],
+    'avif' => ['quality' => 65],
+],", 'php') }}
+    </section>
+
+    <section id="cfg-optimizers" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Optimizers</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+        Optional post-encode binaries. <code>optimizeType</code>: <code>runtime</code> (before URL is served) or <code>job</code> (queue after write).
+        <code>cwebp</code> / <code>avifenc</code> also act as format converters when configured.
+      </p>
+      {{ ui.codeBlock("'optimizers' => [
+    'enabled' => true,
+    'optimizeType' => 'runtime', // runtime | job
+    'binaries' => [
+        'jpegoptim' => App::env('JPEGOPTIM_PATH') ?: 'jpegoptim',
+        'optipng' => App::env('OPTIPNG_PATH') ?: 'optipng',
+        'cwebp' => App::env('CWEBP_PATH') ?: 'cwebp',
+    ],
+    'jpeg' => 'jpegoptim',
+    'png' => 'optipng',
+    'webp' => 'cwebp',
+    'avif' => null,
+],", 'php') }}
+    </section>
+
+    <section id="cfg-profiles" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Profiles</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+        Named size sets × formats. Variant keys become <code>variant</code> names in Twig.
+        Per-variant you can set width/height, mode, position, quality, and even <code>operations</code>.
+      </p>
+      {{ ui.codeBlock("'profiles' => [
+    'responsive' => [
+        'formats' => ['jpg', 'webp'],
+        'variants' => [
+            'sm' => ['width' => 576],
+            'md' => ['width' => 768],
+            'lg' => ['width' => 992],
+            'xl' => ['width' => 1280],
+            '2xl' => ['width' => 1600],
+            // 'square' => [
+            //     'width' => 400,
+            //     'height' => 400,
+            //     'mode' => 'crop',
+            //     'position' => 'center-center',
+            // ],
+        ],
+        'defaults' => [
+            'position' => 'center-center',
+            'mode' => 'fit',
+            'jpegQuality' => 80,
+        ],
+    ],
+],", 'php') }}
+    </section>
+
+    <section id="cfg-volumes" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Volumes &amp; fields</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">Per Craft Volume handle and Asset field handle overrides (profile, storage, autoGenerate, …).</p>
+      {{ ui.codeBlock("'volumes' => [
+    'images' => [
+        'profile' => 'responsive',
+        'autoGenerate' => true,
+        'storage' => 'local',
+    ],
+],
+
+'fields' => [
+    // 'heroImage' => [
+    //     'profiles' => ['responsive'],
+    // ],
+],", 'php') }}
+    </section>
+
+    <section id="cfg-cleanup" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Cleanup retention</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">Playground preview TTL and default retention for CLI sweeps.</p>
+      {{ ui.codeBlock("'cleanup' => [
+    'previewRetentionDays' => 2,
+    'generatedRetentionDays' => 30,
+    'allowRemoteScan' => false,
+],", 'php') }}
+    </section>
+
+    <section id="cfg-policies" class="scroll-mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Policies</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+        Global encode, geometry, safety, lifecycle cleanup, and fallback rules applied to every derivative unless overridden.
+      </p>
+      {{ ui.codeBlock("'policies' => [
+    'encode' => [
+        'stripMetadata' => true,
+        'progressive' => false,
+        'pngCompression' => 6,
+    ],
+    'geometry' => [
+        'allowUpscale' => false,
+        'sharpness' => 'sharp', // soft | normal | sharp | extra
+    ],
+    'safety' => [
+        // Soft cap on source pixels before transforms (CLI/queue).
+        'maxSourcePixels' => 40_000_000,
+    ],
+    'cleanup' => [
+        'onAssetDelete' => true,
+        'onAssetReplace' => true,
+    ],
+    'fallback' => [
+        'enabled' => false,
+        'assetId' => null,
+    ],
+],", 'php') }}
+    </section>
+
+    <section class="rounded-2xl border border-teal-500/20 bg-teal-500/5 p-6">
+      <h3 class="text-base font-semibold text-teal-900 dark:text-teal-100">Twig vs profile</h3>
+      <p class="mt-2 text-sm text-teal-900/80 dark:text-teal-100/70">
+        Omit <code>operations</code> to use the profile variant pipeline. Pass <code>operations</code> to replace that pipeline entirely —
+        always start with geometry. See <a href="/super-images/delivery{{ assetQuery }}" class="underline">Delivery</a> and
+        <a href="/super-images/geometry{{ assetQuery }}" class="underline">Geometry</a>.
+      </p>
+    </section>
+  </div>
+{% endblock %}

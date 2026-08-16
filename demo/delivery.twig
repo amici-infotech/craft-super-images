@@ -1,0 +1,137 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Delivery API — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Twig helpers</p>
+  <h2>Delivery API</h2>
+  <p class="mt-2">
+    Four helpers cover most front-end needs: <code>url</code>, <code>img</code>, <code>picture</code>, and <code>srcset</code>.
+    This demo uses a portable CDN source (override with <code>?asset=</code> if you want).
+  </p>
+{% endblock %}
+
+{% block content %}
+  <div class="space-y-6">
+    {% embed 'super-images/_card.twig' with {
+      title: 'url()',
+      description: 'Plans and returns a delivery URL.',
+      code: "{{ craft.superImages.url(" ~ demoSourceCode ~ ", {\n  profile: 'responsive',\n  variant: 'md',\n  format: 'webp',\n}) }}"
+    } %}
+      {% block preview %}
+        {% set u = craft.superImages.url(demoSource, { profile: demoProfile, variant: 'md', format: 'webp' }) %}
+        <p class="break-all font-mono text-xs text-teal-700 dark:text-teal-300/90">{{ u }}</p>
+        <img src="{{ u }}" alt="url() demo" class="mt-3 max-w-md" loading="lazy">
+      {% endblock %}
+    {% endembed %}
+
+    {% embed 'super-images/_card.twig' with {
+      title: 'img()',
+      description: 'Single derivative as one <code>&lt;img&gt;</code> (no srcset). Extra keys become HTML attributes.',
+      code: "{{ craft.superImages.img(" ~ demoSourceCode ~ ", {\n  profile: 'responsive',\n  variant: 'lg',\n  format: 'jpg',\n  alt: 'Hero',\n  class: 'w-full rounded-lg',\n  fetchpriority: 'high',\n  attrs: { id: 'demo-hero' },\n}) }}"
+    } %}
+      {% block preview %}
+        {{ craft.superImages.img(demoSource, {
+          profile: demoProfile,
+          variant: 'lg',
+          format: 'jpg',
+          alt: 'Hero',
+          class: 'w-full max-w-xl rounded-lg',
+          fetchpriority: 'high',
+          attrs: { id: 'demo-hero' }
+        }) }}
+      {% endblock %}
+    {% endembed %}
+
+    {% embed 'super-images/_card.twig' with {
+      title: 'img() · HTML attrs',
+      description: 'Top-level keys plus <code>attrs</code> / <code>attributes</code> / <code>imgAttrs</code>.',
+      code: "{{ craft.superImages.img(" ~ demoSourceCode ~ ", {\n  variant: 'md',\n  format: 'jpg',\n  alt: 'Accessible label',\n  class: 'rounded-xl shadow',\n  loading: 'eager',\n  decoding: 'async',\n  attrs: { 'data-demo': 'attrs' },\n}) }}"
+    } %}
+      {% block preview %}
+        {{ craft.superImages.img(demoSource, {
+          profile: demoProfile,
+          variant: 'md',
+          format: 'jpg',
+          alt: 'Accessible label',
+          class: 'rounded-xl shadow max-w-lg',
+          loading: 'eager',
+          decoding: 'async',
+          attrs: { 'data-demo': 'attrs' }
+        }) }}
+      {% endblock %}
+    {% endembed %}
+
+    {% embed 'super-images/_card.twig' with {
+      title: 'picture()',
+      description: 'Responsive <code>&lt;picture&gt;</code> with multi-format sources and multi-width srcsets.',
+      code: "{{ craft.superImages.picture(" ~ demoSourceCode ~ ", {\n  profile: 'responsive',\n  formats: ['webp', 'jpg'],\n  variants: ['sm', 'md', 'lg', 'xl'],\n  variant: 'lg',\n  sizes: '(min-width: 992px) 992px, 100vw',\n  alt: 'Responsive hero',\n  pictureAttrs: { class: 'block' },\n}) }}"
+    } %}
+      {% block preview %}
+        {{ craft.superImages.picture(demoSource, {
+          profile: demoProfile,
+          formats: ['webp', 'jpg'],
+          variants: ['sm', 'md', 'lg', 'xl'],
+          variant: 'lg',
+          sizes: '(min-width: 992px) 992px, 100vw',
+          alt: 'Responsive hero',
+          pictureAttrs: { class: 'block max-w-2xl' },
+          loading: 'lazy'
+        }) }}
+      {% endblock %}
+    {% endembed %}
+
+    {% embed 'super-images/_card.twig' with {
+      title: 'srcset()',
+      description: 'Comma-separated <code>url Nw</code> string for custom markup.',
+      code: "{% set srcset = craft.superImages.srcset(" ~ demoSourceCode ~ ", {\n  profile: 'responsive',\n  format: 'webp',\n  variants: ['sm', 'md', 'lg', 'xl'],\n}) %}\n\n<img\n  src=\"{{ craft.superImages.url(" ~ demoSourceCode ~ ", { variant: 'md', format: 'webp' }) }}\"\n  srcset=\"{{ srcset }}\"\n  sizes=\"(min-width: 768px) 768px, 100vw\"\n  alt=\"Custom srcset\"\n>"
+    } %}
+      {% block preview %}
+        {% set srcset = craft.superImages.srcset(demoSource, {
+          profile: demoProfile,
+          format: 'webp',
+          variants: ['sm', 'md', 'lg', 'xl']
+        }) %}
+        <p class="mb-3 break-all font-mono text-[11px] text-zinc-600 dark:text-zinc-500">{{ srcset }}</p>
+        <img
+          src="{{ craft.superImages.url(demoSource, { profile: demoProfile, variant: 'md', format: 'webp' }) }}"
+          srcset="{{ srcset }}"
+          sizes="(min-width: 768px) 768px, 100vw"
+          alt="Custom srcset"
+          class="max-w-xl"
+          loading="lazy"
+        >
+      {% endblock %}
+    {% endembed %}
+
+    {% embed 'super-images/_card.twig' with {
+      title: 'img() · operations override',
+      description: 'When <code>operations</code> is set, the profile variant pipeline is replaced — start with geometry.',
+      code: "{{ craft.superImages.img(" ~ demoSourceCode ~ ", {\n  format: 'jpg',\n  variant: 'ops-hero',\n  operations: [\n    { type: 'fill', width: 720, height: 400, position: 'center-center' },\n    { type: 'brightness', level: 8 },\n  ],\n  alt: 'Ops override',\n}) }}"
+    } %}
+      {% block preview %}
+        {{ craft.superImages.img(demoSource, {
+          format: 'jpg',
+          variant: 'ops-hero',
+          operations: [
+            { type: 'fill', width: 720, height: 400, position: 'center-center' },
+            { type: 'brightness', level: 8 }
+          ],
+          alt: 'Ops override',
+          class: 'max-w-xl rounded-lg',
+          loading: 'lazy'
+        }) }}
+      {% endblock %}
+    {% endembed %}
+
+    <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold text-zinc-900 dark:text-zinc-100">Reserved option keys</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">These never become HTML attributes:</p>
+      <p class="mt-3 font-mono text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-400">
+        profile · variant · variants · format · formats · storage · operations · preview · thumbnail ·
+        alt · loading · sizes · attrs · attributes · imgAttrs · pictureAttrs · pictureAttributes · sourceAttrs · sourceAttributes
+      </p>
+    </section>
+  </div>
+{% endblock %}

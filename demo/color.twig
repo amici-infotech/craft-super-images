@@ -1,0 +1,53 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Color — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Operations</p>
+  <h2>Color</h2>
+  <p class="mt-2">
+    Tone and channel adjustments. <code>saturation</code> and <code>sepia</code> require <strong>Imagick</strong>.
+    Levels accept <code>level</code> or <code>amount</code>.
+    For sepia, use <code>threshold</code> ~80 (default); lower values look harsher, not softer.
+  </p>
+{% endblock %}
+
+{% block content %}
+  {% set demos = [
+    { id: 'color-grayscale', title: 'grayscale', note: 'Full desaturate. GD / Imagick / libvips.', ops: [{ type: 'fit', width: demoWidth }, { type: 'grayscale' }], code: "{ type: 'grayscale' }" },
+    { id: 'color-sepia', title: 'sepia', note: 'Classic warm tone (default threshold 80). Imagick only.', ops: [{ type: 'fit', width: demoWidth }, { type: 'sepia' }], code: "{ type: 'sepia' }" },
+    { id: 'color-sepia-80', title: 'sepia · threshold 80', note: 'Imagick sweet spot — same as default.', ops: [{ type: 'fit', width: demoWidth }, { type: 'sepia', threshold: 80 }], code: "{ type: 'sepia', threshold: 80 }" },
+    { id: 'color-sepia-95', title: 'sepia · threshold 95', note: 'Higher threshold = milder look (not lower).', ops: [{ type: 'fit', width: demoWidth }, { type: 'sepia', threshold: 95 }], code: "{ type: 'sepia', threshold: 95 }" },
+    { id: 'color-invert', title: 'invert', note: 'Negative. GD / Imagick.', ops: [{ type: 'fit', width: demoWidth }, { type: 'invert' }], code: "{ type: 'invert' }" },
+    { id: 'color-brightness-up', title: 'brightness +25', note: 'Positive brightens.', ops: [{ type: 'fit', width: demoWidth }, { type: 'brightness', level: 25 }], code: "{ type: 'brightness', level: 25 }" },
+    { id: 'color-brightness-down', title: 'brightness −20', note: 'Negative darkens.', ops: [{ type: 'fit', width: demoWidth }, { type: 'brightness', level: -20 }], code: "{ type: 'brightness', level: -20 }" },
+    { id: 'color-contrast-up', title: 'contrast +20', note: 'Raise contrast.', ops: [{ type: 'fit', width: demoWidth }, { type: 'contrast', level: 20 }], code: "{ type: 'contrast', level: 20 }" },
+    { id: 'color-contrast-down', title: 'contrast −15', note: 'Flatten contrast.', ops: [{ type: 'fit', width: demoWidth }, { type: 'contrast', level: -15 }], code: "{ type: 'contrast', level: -15 }" },
+    { id: 'color-saturation-up', title: 'saturation +35', note: 'Imagick only.', ops: [{ type: 'fit', width: demoWidth }, { type: 'saturation', level: 35 }], code: "{ type: 'saturation', level: 35 }" },
+    { id: 'color-saturation-down', title: 'saturation −40', note: 'Imagick only — toward muted.', ops: [{ type: 'fit', width: demoWidth }, { type: 'saturation', level: -40 }], code: "{ type: 'saturation', level: -40 }" },
+    { id: 'color-stack', title: 'Combo · brightness + contrast + saturate', note: 'Stacked tone adjustments (Imagick for saturation).', ops: [{ type: 'fit', width: demoWidth }, { type: 'brightness', level: 10 }, { type: 'contrast', level: 12 }, { type: 'saturation', level: 20 }], code: "{ type: 'brightness', level: 10 },\n    { type: 'contrast', level: 12 },\n    { type: 'saturation', level: 20 }" },
+  ] %}
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% for demo in demos %}
+      {% set result = craft.superImages.tryGenerate(demoSource, { format: demoFormat, variant: demo.id, operations: demo.ops }) %}
+      {% set metaHtml %}{{ ui.resultMeta(result) }}{% endset %}
+      {% embed 'super-images/_card.twig' with {
+        title: demo.title,
+        description: demo.note,
+        code: "{{ craft.superImages.img(" ~ demoSourceCode ~ ", {\n  format: 'jpg',\n  operations: [\n    { type: 'fit', width: 640 },\n    " ~ demo.code ~ ",\n  ],\n  alt: '" ~ demo.title ~ "',\n}) }}",
+        cardId: demo.id,
+        meta: metaHtml
+      } %}
+        {% block preview %}
+          {% if result and result.success %}
+            <img src="{{ result.url }}" alt="{{ demo.title }}" {% if result.width > 0 %}width="{{ result.width }}"{% endif %} {% if result.height > 0 %}height="{{ result.height }}"{% endif %} loading="lazy">
+          {% else %}
+            <p class="text-sm text-rose-600 dark:text-rose-300">Failed — often means the active driver does not support this op (try Imagick).</p>
+          {% endif %}
+        {% endblock %}
+      {% endembed %}
+    {% endfor %}
+  </div>
+{% endblock %}

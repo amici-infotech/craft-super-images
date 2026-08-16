@@ -1,0 +1,135 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Geometry — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Operations</p>
+  <h2>Geometry</h2>
+  <p class="mt-2">
+    Resize and crop primitives. When you pass <code>operations</code>, they replace the profile variant steps —
+    always include geometry first. Position strings use <code>xAlign-yAlign</code> (e.g. <code>center-center</code>, <code>bottom-right</code>).
+  </p>
+{% endblock %}
+
+{% block content %}
+  {% set demos = [
+    {
+      id: 'geo-fit',
+      title: 'fit',
+      note: 'Fit inside a box, keep aspect ratio.',
+      ops: [{ type: 'fit', width: demoWidth }],
+      code: "{ type: 'fit', width: 640 }"
+    },
+    {
+      id: 'geo-fit-box',
+      title: 'fit (width + height)',
+      note: 'Fit within both constraints.',
+      ops: [{ type: 'fit', width: 640, height: 360 }],
+      code: "{ type: 'fit', width: 640, height: 360 }"
+    },
+    {
+      id: 'geo-crop-center',
+      title: 'crop · center',
+      note: 'Exact width × height with center-center.',
+      ops: [{ type: 'crop', width: 400, height: 400, position: 'center-center' }],
+      code: "{ type: 'crop', width: 400, height: 400, position: 'center-center' }"
+    },
+    {
+      id: 'geo-crop-top',
+      title: 'crop · top',
+      note: 'Anchor to top-center.',
+      ops: [{ type: 'crop', width: 480, height: 280, position: 'center-top' }],
+      code: "{ type: 'crop', width: 480, height: 280, position: 'center-top' }"
+    },
+    {
+      id: 'geo-crop-br',
+      title: 'crop · bottom-right',
+      note: 'Focal preference bottom-right.',
+      ops: [{ type: 'crop', width: 400, height: 400, position: 'right-bottom' }],
+      code: "{ type: 'crop', width: 400, height: 400, position: 'right-bottom' }"
+    },
+    {
+      id: 'geo-fill',
+      title: 'fill',
+      note: 'Cover the box then crop (object-fit: cover).',
+      ops: [{ type: 'fill', width: 480, height: 320, position: 'center-center' }],
+      code: "{ type: 'fill', width: 480, height: 320, position: 'center-center' }"
+    },
+    {
+      id: 'geo-resize-crop',
+      title: 'resize · crop mode',
+      note: 'Generic resize with mode=crop.',
+      ops: [{ type: 'resize', width: 400, height: 400, mode: 'crop', position: 'center-center' }],
+      code: "{ type: 'resize', width: 400, height: 400, mode: 'crop', position: 'center-center' }"
+    },
+    {
+      id: 'geo-fill-left',
+      title: 'fill · left',
+      note: 'Cover with left-center focal preference.',
+      ops: [{ type: 'fill', width: 480, height: 320, position: 'left-center' }],
+      code: "{ type: 'fill', width: 480, height: 320, position: 'left-center' }"
+    },
+    {
+      id: 'geo-resize',
+      title: 'resize',
+      note: 'Generic resize with mode (default fit).',
+      ops: [{ type: 'resize', width: 520, height: 300, mode: 'fit' }],
+      code: "{ type: 'resize', width: 520, height: 300, mode: 'fit' }"
+    },
+    {
+      id: 'geo-scale',
+      title: 'scale',
+      note: 'Uniform scale by factor (or amount).',
+      ops: [{ type: 'scale', factor: 0.35 }],
+      code: "{ type: 'scale', factor: 0.35 }"
+    },
+    {
+      id: 'geo-rotate',
+      title: 'rotate',
+      note: 'Angle in degrees. Imagick supports background.',
+      ops: [{ type: 'fit', width: 480 }, { type: 'rotate', angle: 12, background: 'transparent' }],
+      code: "{ type: 'fit', width: 480 },\n    { type: 'rotate', angle: 12, background: 'transparent' }"
+    },
+    {
+      id: 'geo-flip-h',
+      title: 'flip · horizontal',
+      note: 'Mirror on the vertical axis.',
+      ops: [{ type: 'fit', width: demoWidth }, { type: 'flip', direction: 'horizontal' }],
+      code: "{ type: 'fit', width: 640 },\n    { type: 'flip', direction: 'horizontal' }"
+    },
+    {
+      id: 'geo-flip-v',
+      title: 'flip · vertical',
+      note: 'Mirror on the horizontal axis.',
+      ops: [{ type: 'fit', width: demoWidth }, { type: 'flip', direction: 'vertical' }],
+      code: "{ type: 'fit', width: 640 },\n    { type: 'flip', direction: 'vertical' }"
+    },
+  ] %}
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% for demo in demos %}
+      {% set result = craft.superImages.tryGenerate(demoSource, {
+        format: demoFormat,
+        variant: demo.id,
+        operations: demo.ops
+      }) %}
+      {% set metaHtml %}{{ ui.resultMeta(result) }}{% endset %}
+      {% embed 'super-images/_card.twig' with {
+        title: demo.title,
+        description: demo.note,
+        code: "{{ craft.superImages.img(" ~ demoSourceCode ~ ", {\n  format: 'jpg',\n  operations: [\n    " ~ demo.code ~ ",\n  ],\n  alt: '" ~ demo.title ~ "',\n}) }}",
+        cardId: demo.id,
+        meta: metaHtml
+      } %}
+        {% block preview %}
+          {% if result and result.success %}
+            <img src="{{ result.url }}" alt="{{ demo.title }}" {% if result.width > 0 %}width="{{ result.width }}"{% endif %} {% if result.height > 0 %}height="{{ result.height }}"{% endif %} loading="lazy">
+          {% else %}
+            <p class="text-sm text-rose-600 dark:text-rose-300">Generation failed or unsupported on this driver.</p>
+          {% endif %}
+        {% endblock %}
+      {% endembed %}
+    {% endfor %}
+  </div>
+{% endblock %}

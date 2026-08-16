@@ -1,0 +1,113 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Sources — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Inputs</p>
+  <h2>Sources</h2>
+  <p class="mt-2">
+    Helpers accept a Craft <code>Asset</code>, an asset ID, a local path under configured
+    <code>sources.local.allowedRoots</code>, or (when enabled) a remote URL on an allow-listed host.
+    This demo ships with a CDN sample so every site works without uploading assets.
+  </p>
+{% endblock %}
+
+{% block content %}
+  <div class="space-y-6">
+    {% embed 'super-images/_card.twig' with {
+      title: 'Remote CDN URL (portable)',
+      description: 'Absolute https URL. Host must be in <code>sources.remote.allowedHosts</code>. This is the default demo source.',
+      code: "{{ craft.superImages.img('" ~ cdnSample ~ "', {\n  variant: 'md',\n  format: 'jpg',\n  alt: 'CDN sample',\n}) }}"
+    } %}
+      {% block preview %}
+        {% set cdnResult = craft.superImages.tryGenerate(cdnSample, {
+          profile: demoProfile,
+          variant: 'md',
+          format: 'jpg'
+        }) %}
+        {% if cdnResult and cdnResult.success %}
+          <img src="{{ cdnResult.url }}" alt="CDN sample" {% if cdnResult.width > 0 %}width="{{ cdnResult.width }}"{% endif %} {% if cdnResult.height > 0 %}height="{{ cdnResult.height }}"{% endif %} loading="lazy">
+          <p class="mt-2 font-mono text-[11px] text-zinc-600 dark:text-zinc-500">{{ cdnResult.url }}</p>
+        {% else %}
+          <p class="text-sm text-amber-700 dark:text-amber-300">
+            Remote sample failed. Enable remote sources and allow <code>{{ cdnSampleHost }}</code>:
+          </p>
+          <pre class="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-[11px] text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">'sources' => [
+  'remote' => [
+    'enabled' => true,
+    'allowedHosts' => ['{{ cdnSampleHost }}', '*.{{ cdnSampleHost }}'],
+  ],
+],</pre>
+        {% endif %}
+      {% endblock %}
+    {% endembed %}
+
+    {% if asset %}
+      {% embed 'super-images/_card.twig' with {
+        title: 'Craft Asset element',
+        description: 'Pass the element directly — the usual case in entry templates. Active because you set <code>?asset=</code>.',
+        code: "{{ craft.superImages.img(asset, {\n  variant: 'md',\n  format: 'jpg',\n  alt: asset.title,\n}) }}"
+      } %}
+        {% block preview %}
+          {{ craft.superImages.img(asset, { profile: demoProfile, variant: 'md', format: 'jpg', alt: asset.title, loading: 'lazy' }) }}
+        {% endblock %}
+      {% endembed %}
+
+      {% embed 'super-images/_card.twig' with {
+        title: 'Asset ID (integer)',
+        description: 'Useful in macros or when you only have the ID in scope.',
+        code: "{{ craft.superImages.img(" ~ asset.id ~ ", {\n  variant: 'md',\n  format: 'jpg',\n  alt: 'By ID',\n}) }}"
+      } %}
+        {% block preview %}
+          {{ craft.superImages.img(asset.id, { profile: demoProfile, variant: 'md', format: 'jpg', alt: 'By ID', loading: 'lazy' }) }}
+        {% endblock %}
+      {% endembed %}
+    {% else %}
+      <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+        <h3 class="text-base font-semibold">Craft Asset / ID</h3>
+        <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+          In real templates you pass an Asset element or ID. To preview those paths here, use the sidebar
+          “Optional: override with Asset ID”.
+        </p>
+        {{ ui.codeBlock("{{ craft.superImages.img(entry.heroImage.one(), {
+  variant: 'md',
+  format: 'webp',
+  alt: entry.title,
+}) }}
+
+{{ craft.superImages.img(12345, { variant: 'md', format: 'jpg' }) }}") }}
+      </section>
+    {% endif %}
+
+    <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Local path</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+        Local files must sit under <code>sources.local.allowedRoots</code> (e.g. <code>@webroot/images</code>).
+      </p>
+      {{ ui.codeBlock("{{ craft.superImages.img('/images/hero.jpg', {
+  variant: 'md',
+  format: 'jpg',
+  alt: 'Local file',
+}) }}") }}
+    </section>
+
+    <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">Remote allow-list</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+        Arbitrary remote URLs are never accepted without a hostname allow-list.
+      </p>
+      {{ ui.codeBlock("# config/super-images.php
+'sources' => [
+  'remote' => [
+    'enabled' => true,
+    'allowedHosts' => ['picsum.photos', '*.picsum.photos'],
+    'timeout' => 10,
+  ],
+],
+
+# Twig
+{{ craft.superImages.img('https://picsum.photos/id/1015/1600/1000.jpg', { variant: 'md' }) }}", 'twig') }}
+    </section>
+  </div>
+{% endblock %}

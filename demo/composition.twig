@@ -1,0 +1,142 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Composition — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Operations</p>
+  <h2>Composition</h2>
+  <p class="mt-2">
+    Borders, padding, backgrounds, watermarks, overlays, and text.
+    Text watermark / text / image watermark / overlay need <strong>Imagick</strong>.
+    Text watermarks need no local files — ideal for portable demos.
+  </p>
+{% endblock %}
+
+{% block content %}
+  {% set demos = [
+    {
+      id: 'comp-border',
+      title: 'border',
+      note: 'Uniform colored border.',
+      ops: [{ type: 'fit', width: demoWidth }, { type: 'border', size: 12, color: '#2dd4bf' }],
+      code: "{ type: 'border', size: 12, color: '#2dd4bf' }"
+    },
+    {
+      id: 'comp-border-thick',
+      title: 'border · thick',
+      note: 'Larger size.',
+      ops: [{ type: 'fit', width: demoWidth }, { type: 'border', size: 28, color: '#0f766e' }],
+      code: "{ type: 'border', size: 28, color: '#0f766e' }"
+    },
+    {
+      id: 'comp-padding',
+      title: 'padding',
+      note: 'Expand canvas with fill color (uniform size).',
+      ops: [{ type: 'fit', width: 480 }, { type: 'padding', size: 28, color: '#111821' }],
+      code: "{ type: 'padding', size: 28, color: '#111821' }"
+    },
+    {
+      id: 'comp-padding-sides',
+      title: 'padding · sides',
+      note: 'Per-side insets.',
+      ops: [{ type: 'fit', width: 480 }, { type: 'padding', top: 12, right: 40, bottom: 12, left: 40, color: '#f0fdfa' }],
+      code: "{ type: 'padding', top: 12, right: 40, bottom: 12, left: 40, color: '#f0fdfa' }"
+    },
+    {
+      id: 'comp-background',
+      title: 'background',
+      note: 'Flatten transparency onto a solid color.',
+      ops: [{ type: 'fit', width: demoWidth }, { type: 'background', color: '#0f766e' }],
+      code: "{ type: 'background', color: '#0f766e' }"
+    },
+    {
+      id: 'comp-wm-diagonal',
+      title: 'watermark · diagonal text',
+      note: 'Full-cover BL→TR text. Imagick only.',
+      ops: [
+        { type: 'fit', width: demoWidth },
+        { type: 'watermark', text: 'Watermark DEMO', color: '#ffffff', opacity: 0.8, angle: 'diagonal', cover: true }
+      ],
+      code: "{\n      type: 'watermark',\n      text: 'Watermark DEMO',\n      color: '#ffffff',\n      opacity: 0.8,\n      angle: 'diagonal',\n      cover: true,\n    }"
+    },
+    {
+      id: 'comp-wm-corner',
+      title: 'watermark · corner text',
+      note: 'Fixed size text, bottom-right.',
+      ops: [
+        { type: 'fit', width: demoWidth },
+        { type: 'watermark', text: '© Super Images', color: '#ffffff', opacity: 0.7, position: 'bottom-right', size: 28, padding: 20 }
+      ],
+      code: "{\n      type: 'watermark',\n      text: '© Super Images',\n      color: '#ffffff',\n      opacity: 0.7,\n      position: 'bottom-right',\n      size: 28,\n      padding: 20,\n    }"
+    },
+    {
+      id: 'comp-text',
+      title: 'text',
+      note: 'Dedicated text overlay op.',
+      ops: [
+        { type: 'fit', width: demoWidth },
+        { type: 'text', content: 'DEMO', position: 'bottom-right', size: 42, color: '#ffffff', opacity: 0.85, padding: 28 }
+      ],
+      code: "{\n      type: 'text',\n      content: 'DEMO',\n      position: 'bottom-right',\n      size: 42,\n      color: '#ffffff',\n      opacity: 0.85,\n      padding: 28,\n    }"
+    },
+    {
+      id: 'comp-text-top',
+      title: 'text · top-left',
+      note: 'Badge-style caption.',
+      ops: [
+        { type: 'fit', width: demoWidth },
+        { type: 'text', content: 'FEATURED', position: 'left-top', size: 32, color: '#ccfbf1', opacity: 0.9, padding: 24 }
+      ],
+      code: "{\n      type: 'text',\n      content: 'FEATURED',\n      position: 'left-top',\n      size: 32,\n      color: '#ccfbf1',\n      opacity: 0.9,\n      padding: 24,\n    }"
+    },
+  ] %}
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% for demo in demos %}
+      {% set result = craft.superImages.tryGenerate(demoSource, { format: demoFormat, variant: demo.id, operations: demo.ops }) %}
+      {% set metaHtml %}{{ ui.resultMeta(result) }}{% endset %}
+      {% embed 'super-images/_card.twig' with {
+        title: demo.title,
+        description: demo.note,
+        code: "{{ craft.superImages.img(" ~ demoSourceCode ~ ", {\n  format: 'jpg',\n  operations: [\n    { type: 'fit', width: 640 },\n    " ~ demo.code ~ ",\n  ],\n  alt: '" ~ demo.title ~ "',\n}) }}",
+        cardId: demo.id,
+        meta: metaHtml
+      } %}
+        {% block preview %}
+          {% if result and result.success %}
+            <img src="{{ result.url }}" alt="{{ demo.title }}" {% if result.width > 0 %}width="{{ result.width }}"{% endif %} {% if result.height > 0 %}height="{{ result.height }}"{% endif %} loading="lazy">
+          {% else %}
+            <p class="text-sm text-rose-600 dark:text-rose-300">Failed — watermark / text need Imagick.</p>
+          {% endif %}
+        {% endblock %}
+      {% endembed %}
+    {% endfor %}
+  </div>
+
+  <section class="mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+    <h3 class="text-base font-semibold">Image watermark / overlay</h3>
+    <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+      These need a readable local file path (not a CDN URL). Ship a logo under an allowed root, or skip on portable demos.
+    </p>
+    {{ ui.codeBlock("{{ craft.superImages.img(" ~ demoSourceCode ~ ", {
+  format: 'jpg',
+  operations: [
+    { type: 'fit', width: 640 },
+    {
+      type: 'watermark',
+      path: alias('@webroot/images/logo.png'),
+      position: 'bottom-right',
+      opacity: 0.55,
+    },
+  ],
+}) }}
+
+{{ craft.superImages.img(" ~ demoSourceCode ~ ", {
+  operations: [
+    { type: 'fit', width: 640 },
+    { type: 'overlay', path: alias('@webroot/images/badge.png'), x: 24, y: 24, opacity: 0.7 },
+  ],
+}) }}") }}
+  </section>
+{% endblock %}

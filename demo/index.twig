@@ -1,0 +1,75 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Overview — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Getting started</p>
+  <h2>Craft Super Images — interactive demo</h2>
+  <p class="mt-2">
+    Explore Twig helpers, operations, and config. Demos use a portable CDN original by default
+    (no site-specific Asset ID). Use the sidebar search to jump pages, or optionally override with
+    <code>?asset=</code> for local Asset testing.
+  </p>
+{% endblock %}
+
+{% block content %}
+  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    {% set cards = [
+      { href: '/super-images/delivery', title: 'Delivery API', blurb: 'url(), img(), picture(), srcset() — how derivatives reach the page.' },
+      { href: '/super-images/formats', title: 'Formats', blurb: 'WebP, JPEG, PNG, AVIF — capability checks and side-by-side output.' },
+      { href: '/super-images/geometry', title: 'Geometry', blurb: 'fit, crop, fill, resize, scale, rotate, flip.' },
+      { href: '/super-images/color', title: 'Color', blurb: 'grayscale, sepia, invert, brightness, contrast, saturation.' },
+      { href: '/super-images/effects', title: 'Effects', blurb: 'blur and sharpen across drivers.' },
+      { href: '/super-images/composition', title: 'Composition', blurb: 'border, padding, background, watermark (image + text), overlay, text.' },
+      { href: '/super-images/sources', title: 'Sources', blurb: 'CDN URLs, Craft Assets, IDs, and local filesystem paths.' },
+      { href: '/super-images/generate', title: 'Generate API', blurb: 'tryGenerate / generate with size, duration, and cache-hit metadata.' },
+      { href: '/super-images/config', title: 'Configuration', blurb: 'Profiles, drivers, storage, optimizers, runtime, policies, and more.' },
+      { href: '/super-images/reference', title: 'CLI & CP', blurb: 'doctor, status, cleanup, queue, playground, diagnostics.' },
+    ] %}
+    {% for c in cards %}
+      <a href="{{ c.href }}{{ assetQuery }}" class="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-teal-500/40 hover:bg-slate-50 dark:border-zinc-800 dark:bg-night-900/60 dark:hover:bg-night-850">
+        <h3 class="text-base font-semibold text-zinc-900 group-hover:text-teal-700 dark:text-zinc-100 dark:group-hover:text-teal-200">{{ c.title }}</h3>
+        <p class="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-500">{{ c.blurb }}</p>
+        <span class="mt-4 inline-flex text-xs font-medium text-teal-700 dark:text-teal-400/90">Open →</span>
+      </a>
+    {% endfor %}
+  </div>
+
+  <section class="mt-10 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+    <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Quick start</h3>
+    <p class="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-500">
+      The Twig surface is always <code class="text-teal-700 dark:text-teal-300">craft.superImages.*</code> — there are no filters.
+      Pass a Craft Asset, ID, local path, or allow-listed remote URL plus options. When you pass
+      <code class="text-teal-700 dark:text-teal-300">operations</code>, they replace the profile variant pipeline —
+      always start with geometry (<code class="text-teal-700 dark:text-teal-300">fit</code> / <code class="text-teal-700 dark:text-teal-300">crop</code>).
+    </p>
+    {{ ui.codeBlock("{{ craft.superImages.img(" ~ demoSourceCode ~ ", {
+  profile: 'responsive',
+  variant: 'md',
+  format: 'webp',
+  alt: 'Demo',
+  class: 'rounded-lg',
+  loading: 'lazy',
+}) }}") }}
+  </section>
+
+  <section class="mt-8">
+    {% embed 'super-images/_card.twig' with {
+      title: 'Sample output',
+      description: 'Default responsive profile, md variant, webp when supported — otherwise jpg. Source is the portable CDN sample unless you set ?asset=.',
+      code: "{{ craft.superImages.img(" ~ demoSourceCode ~ ", {\n  profile: 'responsive',\n  variant: 'md',\n  format: craft.superImages.supportsFormat('webp') ? 'webp' : 'jpg',\n  alt: 'Demo sample',\n  class: 'max-w-full',\n}) }}"
+    } %}
+      {% block preview %}
+        {{ craft.superImages.img(demoSource, {
+          profile: demoProfile,
+          variant: 'md',
+          format: craft.superImages.supportsFormat('webp') ? 'webp' : 'jpg',
+          alt: 'Demo sample',
+          class: 'max-w-full',
+          loading: 'lazy'
+        }) }}
+      {% endblock %}
+    {% endembed %}
+  </section>
+{% endblock %}

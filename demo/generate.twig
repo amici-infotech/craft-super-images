@@ -1,0 +1,90 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Generate API — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Twig helpers</p>
+  <h2>Generate API</h2>
+  <p class="mt-2">
+    <code>tryGenerate</code> / <code>generate</code> run the pipeline eagerly and return a result object
+    (<code>url</code>, <code>width</code>, <code>height</code>, <code>size</code>, <code>durationMs</code>, <code>diagnostics</code>).
+    Prefer <code>tryGenerate</code> in demos — it returns <code>null</code> instead of throwing.
+  </p>
+{% endblock %}
+
+{% block content %}
+  {% set result = craft.superImages.tryGenerate(demoSource, {
+    profile: demoProfile,
+    variant: 'md',
+    format: 'jpg'
+  }) %}
+
+  <div class="space-y-6">
+    {% set metaHtml %}{{ ui.resultMeta(result) }}{% endset %}
+    {% embed 'super-images/_card.twig' with {
+      title: 'tryGenerate()',
+      description: 'Safe for templates. On success you get metadata; on failure, null (check logs). Cache hits still return real dimensions.',
+      code: "{% set result = craft.superImages.tryGenerate(" ~ demoSourceCode ~ ", {\n  profile: 'responsive',\n  variant: 'md',\n  format: 'jpg',\n}) %}\n\n{% if result %}\n  <img src=\"{{ result.url }}\" {% if result.width > 0 %}width=\"{{ result.width }}\"{% endif %} {% if result.height > 0 %}height=\"{{ result.height }}\"{% endif %} alt=\"\">\n  <p>{{ result.width }}×{{ result.height }} · {{ (result.size / 1024)|number_format(1) }} KB · {{ result.durationMs|number_format(0) }} ms</p>\n{% endif %}",
+      meta: metaHtml
+    } %}
+      {% block preview %}
+        {% if result and result.success %}
+          <img src="{{ result.url }}" alt="tryGenerate" {% if result.width > 0 %}width="{{ result.width }}"{% endif %} {% if result.height > 0 %}height="{{ result.height }}"{% endif %} loading="lazy">
+          <dl class="mt-4 grid gap-2 font-mono text-[11px] text-zinc-600 dark:text-zinc-400 sm:grid-cols-2">
+            <div><dt class="text-zinc-600">url</dt><dd class="break-all text-teal-700 dark:text-teal-300/80">{{ result.url }}</dd></div>
+            <div><dt class="text-zinc-600">mime</dt><dd>{{ result.mime }}</dd></div>
+            <div><dt class="text-zinc-600">format</dt><dd>{{ result.format }}</dd></div>
+            <div><dt class="text-zinc-600">identity</dt><dd class="break-all">{{ result.identity }}</dd></div>
+            <div><dt class="text-zinc-600">storagePath</dt><dd class="break-all">{{ result.storagePath }}</dd></div>
+            <div><dt class="text-zinc-600">diagnostics</dt><dd class="break-all">{{ result.diagnostics|json_encode }}</dd></div>
+          </dl>
+        {% else %}
+          <p class="text-sm text-rose-600 dark:text-rose-300">tryGenerate returned null.</p>
+        {% endif %}
+      {% endblock %}
+    {% endembed %}
+
+    {% embed 'super-images/_card.twig' with {
+      title: 'generate() + operations',
+      description: 'Same pipeline with an explicit operation list. <code>generate()</code> throws on failure — wrap in try/catch in PHP, or stick to tryGenerate in Twig.',
+      code: "{% set result = craft.superImages.tryGenerate(" ~ demoSourceCode ~ ", {\n  format: 'jpg',\n  variant: 'gen-ops-demo',\n  operations: [\n    { type: 'fit', width: 640 },\n    { type: 'grayscale' },\n  ],\n}) %}"
+    } %}
+      {% block preview %}
+        {% import 'super-images/_macros.twig' as ui %}
+        {% set opsResult = craft.superImages.tryGenerate(demoSource, {
+          format: 'jpg',
+          variant: 'gen-ops-demo',
+          operations: [
+            { type: 'fit', width: 640 },
+            { type: 'grayscale' }
+          ]
+        }) %}
+        {% if opsResult and opsResult.success %}
+          <div class="mb-3 flex flex-wrap gap-1.5">{{ ui.resultMeta(opsResult) }}</div>
+          <img src="{{ opsResult.url }}" alt="ops generate" {% if opsResult.width > 0 %}width="{{ opsResult.width }}"{% endif %} {% if opsResult.height > 0 %}height="{{ opsResult.height }}"{% endif %} loading="lazy">
+        {% else %}
+          <p class="text-sm text-rose-600 dark:text-rose-300">Failed.</p>
+        {% endif %}
+      {% endblock %}
+    {% endembed %}
+
+    <section class="rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+      <h3 class="text-base font-semibold">isEnabled()</h3>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-500">
+        When <code>enabled =&gt; false</code> in config, transforms stop and Twig helpers fall back to the original URL
+        so templates keep rendering. Current state:
+        {% if craft.superImages.isEnabled() %}
+          {{ ui.pill('enabled', 'ok') }}
+        {% else %}
+          {{ ui.pill('disabled — originals only', 'warn') }}
+        {% endif %}
+      </p>
+      {{ ui.codeBlock("{% if craft.superImages.isEnabled() %}
+  {{ craft.superImages.img(" ~ demoSourceCode ~ ", { variant: 'md' }) }}
+{% else %}
+  {# fall back to original #}
+{% endif %}") }}
+    </section>
+  </div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{# Reusable demo UI helpers #}
+
+{% macro codeBlock(code, lang = 'twig') %}
+  <div class="relative group" x-data="{ copied: false }">
+    <button
+      type="button"
+      class="absolute right-2 top-2 z-10 rounded-md border border-slate-300 bg-white/90 px-2 py-1 text-[11px] font-medium text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:border-teal-500/50 hover:text-teal-700 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300 dark:hover:text-teal-300"
+      @click="navigator.clipboard.writeText($refs.code.textContent); copied = true; setTimeout(() => copied = false, 1600)"
+      x-text="copied ? 'Copied' : 'Copy'"
+    ></button>
+    <pre class="language-{{ lang }} overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-4 text-[12px] leading-relaxed dark:border-zinc-800 dark:bg-zinc-950"><code class="language-{{ lang }} font-mono" x-ref="code">{{ code|trim|e }}</code></pre>
+  </div>
+{% endmacro %}
+
+{% macro pill(label, tone = 'neutral') %}
+  {% set tones = {
+    ok: 'border-emerald-500/40 text-emerald-700 bg-emerald-500/10 dark:text-emerald-300',
+    warn: 'border-amber-500/40 text-amber-700 bg-amber-500/10 dark:text-amber-300',
+    bad: 'border-rose-500/40 text-rose-700 bg-rose-500/10 dark:text-rose-300',
+    info: 'border-teal-500/40 text-teal-700 bg-teal-500/10 dark:text-teal-300',
+    neutral: 'border-slate-300 text-zinc-600 bg-slate-100 dark:border-zinc-700 dark:text-zinc-400 dark:bg-zinc-900'
+  } %}
+  <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-mono {{ tones[tone]|default(tones.neutral) }}">{{ label }}</span>
+{% endmacro %}
+
+{% macro resultMeta(result) %}
+  {% import _self as ui %}
+  {% if result and result.success %}
+    {{ ui.pill(result.width ~ '×' ~ result.height, 'ok') }}
+    {{ ui.pill((result.size / 1024)|number_format(1) ~ ' KB', 'neutral') }}
+    {{ ui.pill(result.durationMs|number_format(0) ~ ' ms', 'info') }}
+    {% if result.diagnostics.skipped is defined and result.diagnostics.skipped %}
+      {{ ui.pill('cache hit', 'warn') }}
+    {% endif %}
+  {% else %}
+    {{ ui.pill('failed / unsupported', 'bad') }}
+  {% endif %}
+{% endmacro %}

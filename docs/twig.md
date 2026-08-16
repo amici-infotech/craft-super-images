@@ -164,6 +164,72 @@ First request for an asset may spend a few ms generating the thumb; later reques
 
 ---
 
+## Operations (custom pipelines)
+
+When you pass `operations`, they **replace** the profile variant pipeline for that call. Always start with geometry.
+
+```twig
+{{ craft.superImages.img(asset, {
+  format: 'jpg',
+  variant: 'hero-ops',
+  operations: [
+    { type: 'fill', width: 1200, height: 630, position: 'center-center' },
+    { type: 'brightness', level: 5 },
+    {
+      type: 'watermark',
+      text: '© Acme',
+      color: '#ffffff',
+      opacity: 0.7,
+      position: 'bottom-right',
+      size: 28,
+      padding: 24,
+    },
+  ],
+  alt: entry.title,
+}) }}
+```
+
+### Built-in operation types
+
+| Group | Types | Notes |
+|---|---|---|
+| Geometry | `fit`, `crop`, `fill`, `resize`, `scale`, `rotate`, `flip` | Start here |
+| Color | `grayscale`, `sepia`, `invert`, `brightness`, `contrast`, `saturation` | Sepia / saturation need Imagick |
+| Effects | `blur`, `sharpen` | Option names vary by driver |
+| Composition | `border`, `padding`, `background`, `watermark`, `overlay`, `text` | Watermark/overlay/text need Imagick |
+
+**Sepia:** `threshold` / `amount` is `0–100`. Default / sweet spot is **80**. Lower values look harsher, not softer.
+
+**Text watermark (no local file):**
+
+```twig
+{ type: 'watermark', text: 'PROOF', angle: 'diagonal', cover: true, opacity: 0.55, color: '#ffffff' }
+```
+
+**Image watermark** needs a readable local path under an allowed root (not a CDN URL).
+
+Try these live in the [interactive demo](./demo.md).
+
+---
+
+## Helpers cheat sheet
+
+| Helper | Returns | Typical use |
+|---|---|---|
+| `url(source, options)` | string URL | Background images, custom markup |
+| `img(source, options)` | `<img>` HTML | Single derivative |
+| `picture(source, options)` | `<picture>` HTML | Responsive multi-format |
+| `srcset(source, options)` | `url Nw, …` string | Roll-your-own `<img>` |
+| `generate(source, options)` | result object (throws on failure) | Explicit generate-now |
+| `tryGenerate(source, options)` | result or `null` | Demos / soft failure |
+| `supportsFormat(format)` | bool | Capability checks |
+| `isEnabled()` | bool | Branch when plugin disabled |
+
+Reserved option keys (never become HTML attributes):  
+`profile`, `variant`, `variants`, `format`, `formats`, `storage`, `operations`, `preview`, `thumbnail`, `alt`, `loading`, `sizes`, `attrs`, `attributes`, `imgAttrs`, `pictureAttrs`, `pictureAttributes`, `sourceAttrs`, `sourceAttributes`.
+
+---
+
 ## Performance rules
 
 Do **not** call `generate()` inside list/gallery templates unless you intentionally want extra blocking generation beyond `generateBeforePageLoad`.
@@ -179,3 +245,11 @@ and either:
 - `generateBeforePageLoad = true` (Craft-style, generate during Twig),
 - `generateBeforePageLoad = false` with runtime action URLs, and/or
 - pre-warm via `php craft super-images/generate` / queue / autoGenerate.
+
+---
+
+## Related
+
+- [Interactive demo](./demo.md)
+- [Delivery / runtime](./delivery.md)
+- [Configuration](./configuration.md)

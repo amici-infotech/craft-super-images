@@ -1,6 +1,6 @@
 # Super Images
 
-Image processing infrastructure for Craft CMS 5 — transforms, formats, optimization, storage, and delivery.
+Image processing for Craft CMS 5 — transforms, formats, optimization, storage, and delivery.
 
 ```text
 Resolve source → Process → Encode → Optimize → Validate → Store → Deliver
@@ -8,11 +8,12 @@ Resolve source → Process → Encode → Optimize → Validate → Store → De
 
 | Surface | Role |
 |---|---|
-| Twig (`craft.superImages`) | Plan delivery URLs only (no processing on render) |
+| Twig (`craft.superImages`) | Delivery helpers (`url` / `img` / `picture` / `srcset`) |
 | CLI / queue | Eager generation |
 | Signed runtime URL | Lazy generation on first request |
-| Playground (CP) | Preview under a separate `preview/` storage namespace |
-| Control Panel | Diagnostics + overview over the same config model |
+| Playground (CP) | Preview under a `preview/` storage namespace |
+| Control Panel | Diagnostics, encoders, naming, overview |
+| Interactive demo | Clickable Twig lab (`demo/` → `templates/super-images/`) |
 
 ---
 
@@ -20,17 +21,18 @@ Resolve source → Process → Encode → Optimize → Validate → Store → De
 
 1. [Installation](#installation)
 2. [Quick start](#quick-start)
-3. [Architecture](#architecture)
-4. [Configuration](./configuration.md)
-5. [Policies](./policies.md)
-6. [Encoders & optimizers](./encoders-optimizers.md)
-7. [Twig & frontend](./twig.md)
-8. [CLI & queue](./cli.md)
-9. [Runtime delivery](./delivery.md)
-10. [Storage](./storage.md)
-11. [Control Panel & Playground](./control-panel.md)
-12. [Cleanup & diagnostics](./diagnostics.md)
-13. [Extension API](./extension-api.md)
+3. [Interactive demo](./demo.md)
+4. [Architecture](#architecture)
+5. [Configuration](./configuration.md)
+6. [Policies](./policies.md)
+7. [Encoders & optimizers](./encoders-optimizers.md)
+8. [Twig & frontend](./twig.md)
+9. [CLI & queue](./cli.md)
+10. [Runtime delivery](./delivery.md)
+11. [Storage & naming](./storage.md)
+12. [Control Panel & Playground](./control-panel.md)
+13. [Cleanup & diagnostics](./diagnostics.md)
+14. [Extension API](./extension-api.md)
 
 ---
 
@@ -46,6 +48,14 @@ Copy the example config:
 ```bash
 cp vendor/amici/craft-super-images/config/super-images.example.php config/super-images.php
 ```
+
+Optional — install the interactive demo:
+
+```bash
+cp -R vendor/amici/craft-super-images/demo templates/super-images
+```
+
+Then open `/super-images`. Details: [Interactive demo](./demo.md).
 
 Set environment variables for secrets and Ubuntu binary paths (see [Encoders & optimizers](./encoders-optimizers.md)).
 
@@ -65,6 +75,21 @@ With `delivery.generateBeforePageLoad = true` (or Craft’s matching setting), T
 
 With `generateBeforePageLoad = false`, Twig emits signed runtime URLs for missing files; the first browser hit generates and redirects to storage.
 
+### Custom operations
+
+```twig
+{{ craft.superImages.img(asset, {
+  format: 'jpg',
+  operations: [
+    { type: 'fit', width: 800 },
+    { type: 'sepia', threshold: 80 },
+  ],
+  alt: entry.title,
+}) }}
+```
+
+Passing `operations` replaces the profile variant pipeline — always start with geometry.
+
 ### CLI (eager)
 
 ```bash
@@ -81,17 +106,23 @@ php craft super-images/doctor
 {{ craft.superImages.url('https://cdn.example.com/media/hero.jpg', { format: 'webp' }) }}
 ```
 
+Remote hosts must be allow-listed under `sources.remote`.
+
 ---
 
 ## Architecture
 
 ### One pipeline
 
-Every generation path (CLI, queue, runtime, Playground, explicit `generate()`) calls the same `GenerationService`.
+Every generation path (CLI, queue, runtime, Playground, Twig eager generate, explicit `generate()`) calls the same `GenerationService`.
 
-### Deterministic identity
+### Deterministic identity + settings-aware paths
 
-Derivative paths are derived from a stable identity hash. There is **no** `GeneratedImage` database table.
+Each derivative has a SHA-256 **identity** (source + profile/variant/format + operations + encode options + driver + …).
+
+Default storage paths include `{transformHash}` (from that identity) so changing ops/settings creates a **new file** instead of reusing a stale cache. Customize templates under `storage.naming` or in CP Settings — see [Storage](./storage.md).
+
+There is **no** `GeneratedImage` database table.
 
 ### Delivery contract
 
@@ -107,4 +138,5 @@ When the file already exists, Twig always emits the storage URL.
 ## Related
 
 - Example config: `config/super-images.example.php`
-- Planning docs: `plan/` (historical; product docs above are authoritative for Twig variable API)
+- Interactive demo package: `demo/`
+- Planning docs: `plan/` (historical; product docs above are authoritative)

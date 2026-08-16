@@ -1,0 +1,99 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Effects — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Operations</p>
+  <h2>Effects</h2>
+  <p class="mt-2">
+    Softening and sharpening. GD uses <code>passes</code> for blur; Imagick/libvips prefer <code>radius</code> / <code>sigma</code>.
+  </p>
+{% endblock %}
+
+{% block content %}
+  {% set demos = [
+    {
+      id: 'fx-blur-light',
+      title: 'blur · light',
+      note: 'Gentle blur (passes + sigma).',
+      ops: [{ type: 'fit', width: demoWidth }, { type: 'blur', passes: 1, sigma: 1 }],
+      code: "{ type: 'fit', width: 640 },\n    { type: 'blur', passes: 1, sigma: 1 }"
+    },
+    {
+      id: 'fx-blur-heavy',
+      title: 'blur · heavy',
+      note: 'Stronger blur.',
+      ops: [{ type: 'fit', width: demoWidth }, { type: 'blur', passes: 3, sigma: 3 }],
+      code: "{ type: 'fit', width: 640 },\n    { type: 'blur', passes: 3, sigma: 3 }"
+    },
+    {
+      id: 'fx-sharpen',
+      title: 'sharpen',
+      note: 'amount controls strength (default 1.0).',
+      ops: [{ type: 'fit', width: demoWidth }, { type: 'sharpen', amount: 1.2 }],
+      code: "{ type: 'fit', width: 640 },\n    { type: 'sharpen', amount: 1.2 }"
+    },
+    {
+      id: 'fx-sharpen-strong',
+      title: 'sharpen · strong',
+      note: 'Higher amount.',
+      ops: [{ type: 'fit', width: demoWidth }, { type: 'sharpen', amount: 2 }],
+      code: "{ type: 'fit', width: 640 },\n    { type: 'sharpen', amount: 2 }"
+    },
+    {
+      id: 'fx-combo-bw',
+      title: 'Combo · crop + grayscale + sharpen',
+      note: 'Stacked ops in one pipeline.',
+      ops: [
+        { type: 'crop', width: 480, height: 320, position: 'center-center' },
+        { type: 'grayscale' },
+        { type: 'sharpen', amount: 1 }
+      ],
+      code: "{ type: 'crop', width: 480, height: 320, position: 'center-center' },\n    { type: 'grayscale' },\n    { type: 'sharpen', amount: 1 }"
+    },
+    {
+      id: 'fx-combo-mood',
+      title: 'Combo · fit + contrast + blur',
+      note: 'Soft cinematic look.',
+      ops: [
+        { type: 'fit', width: 640 },
+        { type: 'contrast', level: 15 },
+        { type: 'blur', sigma: 0.8, passes: 1 }
+      ],
+      code: "{ type: 'fit', width: 640 },\n    { type: 'contrast', level: 15 },\n    { type: 'blur', sigma: 0.8, passes: 1 }"
+    },
+    {
+      id: 'fx-combo-wm',
+      title: 'Combo · fill + text watermark',
+      note: 'Cover crop plus diagonal text (Imagick).',
+      ops: [
+        { type: 'fill', width: 560, height: 320, position: 'center-center' },
+        { type: 'watermark', text: 'PROOF', color: '#ffffff', opacity: 0.55, angle: 'diagonal', cover: true }
+      ],
+      code: "{ type: 'fill', width: 560, height: 320, position: 'center-center' },\n    {\n      type: 'watermark',\n      text: 'PROOF',\n      color: '#ffffff',\n      opacity: 0.55,\n      angle: 'diagonal',\n      cover: true,\n    }"
+    },
+  ] %}
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% for demo in demos %}
+      {% set result = craft.superImages.tryGenerate(demoSource, { format: demoFormat, variant: demo.id, operations: demo.ops }) %}
+      {% set metaHtml %}{{ ui.resultMeta(result) }}{% endset %}
+      {% embed 'super-images/_card.twig' with {
+        title: demo.title,
+        description: demo.note,
+        code: "{{ craft.superImages.img(" ~ demoSourceCode ~ ", {\n  format: 'jpg',\n  operations: [\n    " ~ demo.code ~ ",\n  ],\n  alt: '" ~ demo.title ~ "',\n}) }}",
+        cardId: demo.id,
+        meta: metaHtml
+      } %}
+        {% block preview %}
+          {% if result and result.success %}
+            <img src="{{ result.url }}" alt="{{ demo.title }}" {% if result.width > 0 %}width="{{ result.width }}"{% endif %} {% if result.height > 0 %}height="{{ result.height }}"{% endif %} loading="lazy">
+          {% else %}
+            <p class="text-sm text-rose-600 dark:text-rose-300">Generation failed.</p>
+          {% endif %}
+        {% endblock %}
+      {% endembed %}
+    {% endfor %}
+  </div>
+{% endblock %}

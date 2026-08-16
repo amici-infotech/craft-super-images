@@ -1,0 +1,67 @@
+{% extends 'super-images/_layout.twig' %}
+{% import 'super-images/_macros.twig' as ui %}
+
+{% block title %}Formats — Super Images Demo{% endblock %}
+
+{% block intro %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-teal-700/80 dark:text-teal-400/80">Output</p>
+  <h2>Formats</h2>
+  <p class="mt-2">
+    Ask the active driver what it can encode with <code>supportsFormat()</code>, then request
+    <code>jpg</code>, <code>webp</code>, <code>png</code>, or <code>avif</code> per call or via profile <code>formats</code>.
+  </p>
+{% endblock %}
+
+{% block content %}
+  <div class="mb-6 flex flex-wrap gap-2">
+    {% for fmt in ['avif', 'webp', 'jpg', 'png'] %}
+      {% if craft.superImages.supportsFormat(fmt) %}
+        {{ ui.pill(fmt ~ ' supported', 'ok') }}
+      {% else %}
+        {{ ui.pill(fmt ~ ' unavailable', 'bad') }}
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    {% for fmt in ['webp', 'jpg', 'png', 'avif'] %}
+      {% set supported = craft.superImages.supportsFormat(fmt) %}
+      {% embed 'super-images/_card.twig' with {
+        title: fmt|upper,
+        description: supported
+          ? 'Encoded via the selected driver (and optional post-optimize binaries).'
+          : 'Not available on this host/driver — card shows a soft message instead of failing the page.',
+        code: "{{ craft.superImages.img(" ~ demoSourceCode ~ ", {\n  format: '" ~ fmt ~ "',\n  variant: 'md',\n  alt: '" ~ fmt|upper ~ " demo',\n}) }}",
+        cardId: 'fmt-' ~ fmt
+      } %}
+        {% block preview %}
+          {% if craft.superImages.supportsFormat(fmt) %}
+            {{ craft.superImages.img(demoSource, {
+              profile: demoProfile,
+              format: fmt,
+              variant: 'md',
+              alt: fmt|upper ~ ' demo',
+              class: 'max-w-full',
+              loading: 'lazy'
+            }) }}
+          {% else %}
+            <p class="text-sm text-zinc-600 dark:text-zinc-500">Format <code class="text-zinc-700 dark:text-zinc-300">{{ fmt }}</code> is not supported by the current driver.</p>
+          {% endif %}
+        {% endblock %}
+      {% endembed %}
+    {% endfor %}
+  </div>
+
+  <section class="mt-8 rounded-2xl border border-slate-200 bg-white/90 p-6 dark:border-zinc-800 dark:bg-night-900/50">
+    <h3 class="text-base font-semibold">Capability check</h3>
+    {{ ui.codeBlock("{% if craft.superImages.supportsFormat('avif') %}
+  {% set format = 'avif' %}
+{% elseif craft.superImages.supportsFormat('webp') %}
+  {% set format = 'webp' %}
+{% else %}
+  {% set format = 'jpg' %}
+{% endif %}
+
+{{ craft.superImages.img(" ~ demoSourceCode ~ ", { format: format, variant: 'md' }) }}") }}
+  </section>
+{% endblock %}
