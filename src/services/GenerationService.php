@@ -98,6 +98,22 @@ class GenerationService extends Component
 
         $identity = $plugin->getGenerationIdentity()->calculate($definition, $driver->name());
         $pathMeta = $this->resolvePathMeta($request, $plugin);
+        $naming = is_array($plugin->getSettings()->storage['naming'] ?? null)
+            ? $plugin->getSettings()->storage['naming']
+            : null;
+
+        if (
+            is_array($naming)
+            && !empty($naming['includeVolumeInFolderHash'])
+            && ($pathMeta['folderPath'] !== null || $pathMeta['volumeHandle'] !== null)
+        ) {
+            $pathMeta['folderHash'] = $plugin->getStoragePathBuilder()->folderHash(
+                (string)($pathMeta['folderPath'] ?? ''),
+                $pathMeta['volumeHandle'],
+                true,
+            );
+        }
+
         $storagePath = $plugin->getStoragePathBuilder()->build(
             $identity,
             $definition->format,
@@ -107,6 +123,9 @@ class GenerationService extends Component
             $pathMeta['assetId'],
             $pathMeta['basename'],
             $pathMeta['folderHash'],
+            $naming,
+            $pathMeta['folderPath'],
+            $pathMeta['volumeHandle'],
         );
 
         $adapter = $plugin->getStorageManager()->select($definition->storageAdapter);
@@ -589,7 +608,13 @@ class GenerationService extends Component
      * @param GenerationRequest $request The generation request.
      * @param Plugin $plugin Plugin instance.
      *
-     * @return array{assetId: int|null, basename: string|null, folderHash: string|null}
+     * @return array{
+     *     assetId: int|null,
+     *     basename: string|null,
+     *     folderHash: string|null,
+     *     folderPath: string|null,
+     *     volumeHandle: string|null
+     * }
      */
     private function resolvePathMeta(GenerationRequest $request, Plugin $plugin): array
     {
@@ -601,12 +626,16 @@ class GenerationService extends Component
                     'assetId' => $request->assetId,
                     'basename' => $meta['basename'],
                     'folderHash' => $meta['folderHash'],
+                    'folderPath' => $meta['folderPath'],
+                    'volumeHandle' => $meta['volumeHandle'] !== '' ? $meta['volumeHandle'] : null,
                 ];
             } catch (\Throwable) {
                 return [
                     'assetId' => $request->assetId,
                     'basename' => null,
                     'folderHash' => null,
+                    'folderPath' => null,
+                    'volumeHandle' => null,
                 ];
             }
         }
@@ -616,6 +645,8 @@ class GenerationService extends Component
                 'assetId' => null,
                 'basename' => pathinfo($request->localPath, PATHINFO_FILENAME) ?: null,
                 'folderHash' => null,
+                'folderPath' => null,
+                'volumeHandle' => null,
             ];
         }
 
@@ -626,6 +657,8 @@ class GenerationService extends Component
                 'assetId' => null,
                 'basename' => is_string($path) ? (pathinfo($path, PATHINFO_FILENAME) ?: null) : null,
                 'folderHash' => null,
+                'folderPath' => null,
+                'volumeHandle' => null,
             ];
         }
 
@@ -633,6 +666,8 @@ class GenerationService extends Component
             'assetId' => null,
             'basename' => null,
             'folderHash' => null,
+            'folderPath' => null,
+            'volumeHandle' => null,
         ];
     }
 

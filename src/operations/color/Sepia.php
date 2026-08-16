@@ -19,6 +19,8 @@ use amici\SuperImages\operations\AbstractOperation;
  *
  * Applies a sepia tone effect to the image.
  * Supported options: `threshold` or `amount` (default: 80).
+ * Imagick maps this 0–100 value straight into sepiaToneImage(); ~80 is classic sepia,
+ * lower values tend to look harsher/yellower (not “softer”).
  * Supported drivers: Imagick only.
  */
 final class Sepia extends AbstractOperation

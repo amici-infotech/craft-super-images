@@ -409,8 +409,12 @@ final class ImagickDriver extends AbstractDriver
     /**
      * Applies a sepia tone effect at the given threshold.
      *
+     * Imagick's sepiaToneImage() expects a 0–100 style threshold (≈80 is the usual
+     * sweet spot). Do not scale by QuantumRange — on ImageMagick 7 Q16-HDRI that
+     * overflows channels into solid / unreadable colors.
+     *
      * @param ImageHandle $handle Source Imagick handle.
-     * @param int $threshold Sepia intensity from 0–100 mapped to Imagick's quantum range.
+     * @param int $threshold Sepia threshold 0–100 (default 80). Lower ≈ harsher/yellower; ~80 ≈ classic sepia.
      *
      * @return ImageHandle Sepia-toned Imagick handle.
      */
@@ -418,7 +422,8 @@ final class ImagickDriver extends AbstractDriver
     {
         /** @var Imagick $imagick */
         $imagick = clone $handle->resource;
-        $imagick->sepiaToneImage($threshold * Imagick::getQuantumRange()['quantumRangeLong'] / 100);
+        $threshold = max(0, min(100, $threshold));
+        $imagick->sepiaToneImage((float) $threshold);
 
         return $this->handleFromImagick($imagick);
     }

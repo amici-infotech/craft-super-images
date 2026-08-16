@@ -135,6 +135,32 @@ return [
             //     'baseUrl' => App::env('SUPER_IMAGES_CDN_URL'),
             // ],
         ],
+        /**
+         * File / folder naming conventions for generated derivatives.
+         *
+         * {transformHash} is sliced from the generation identity (ops, encode, driver, …).
+         * Changing sepia threshold / crop size / quality therefore creates a new path
+         * instead of silently reusing a stale cached file.
+         *
+         * Tokens:
+         *   {folderHash} {transformHash} {transformFolderHash} {identity} {identityShort}
+         *   {identityShard} {assetId} {basename} {variant} {profile} {format} {ext}
+         *   {namespace} {volume}
+         */
+        'naming' => [
+            // Craft Asset originals (default — settings-aware folder segment).
+            'assetPath' => '{folderHash}/{transformHash}/{assetId}/{basename}-{variant}.{ext}',
+            // Local path / remote URL originals.
+            'path' => '{identityShard}/{basename}-{variant}.{ext}',
+            // Length of {transformHash} / {identityShort} (8–64).
+            'transformHashLength' => 16,
+            // Include volume handle inside {folderHash} input.
+            'includeVolumeInFolderHash' => false,
+            // Compact alternative (single settings-aware folder):
+            // 'assetPath' => '{transformFolderHash}/{assetId}/{basename}-{variant}.{ext}',
+            // Readable alternative:
+            // 'assetPath' => '{volume}/{profile}/{variant}/{assetId}-{basename}.{ext}',
+        ],
     ],
 
     // Native encode options passed to the selected image driver.

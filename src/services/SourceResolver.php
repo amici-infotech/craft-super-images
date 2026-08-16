@@ -109,7 +109,7 @@ class SourceResolver extends Component
      *
      * @param int $assetId Craft asset element ID.
      *
-     * @return array{basename: string, folderHash: string, folderPath: string, filename: string}
+     * @return array{basename: string, folderHash: string, folderPath: string, filename: string, volumeHandle: string}
      *
      * @throws SourceException When the asset is not found.
      */
@@ -123,6 +123,7 @@ class SourceResolver extends Component
             'filename' => $filename,
             'basename' => pathinfo($filename, PATHINFO_FILENAME),
             'folderPath' => $folderPath,
+            'volumeHandle' => (string) ($asset->getVolume()->handle ?? ''),
             'folderHash' => Plugin::getInstance()->getStoragePathBuilder()->folderHash($folderPath),
         ];
     }

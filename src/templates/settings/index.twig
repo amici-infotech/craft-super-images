@@ -322,6 +322,154 @@
             </table>
         </section>
 
+        <section class="si-settings__panel" id="naming">
+            <h3>{{ "Derivative naming"|t('super-images') }}</h3>
+            <p class="light" style="margin-top:0;max-width:52rem;">
+                {{ "Paths include a settings-aware {transformHash} by default so changing operations (sepia, crop, quality, …) writes a new file instead of reusing a stale cache."|t('super-images') }}
+            </p>
+
+            <div class="si-settings__grid" style="margin:16px 0;">
+                <div>
+                    <div class="si-settings__metric-label">{{ "Asset example"|t('super-images') }}</div>
+                    <code style="display:block;margin-top:6px;word-break:break-all;">{{ namingExampleAsset }}</code>
+                </div>
+                <div>
+                    <div class="si-settings__metric-label">{{ "Local / remote example"|t('super-images') }}</div>
+                    <code style="display:block;margin-top:6px;word-break:break-all;">{{ namingExampleOther }}</code>
+                </div>
+            </div>
+
+            {% if configFileOverridesNaming %}
+                <div class="warning with-icon" style="margin-bottom:16px;">
+                    {{ "Naming is locked by config/super-images.php. Edit storage.naming there to change conventions."|t('super-images') }}
+                </div>
+            {% endif %}
+
+            <form method="post" accept-charset="UTF-8" action="" {% if configFileOverridesNaming %}class="disabled"{% endif %}>
+                {{ csrfInput() }}
+                {{ actionInput('super-images/settings/save-naming') }}
+                {{ redirectInput('super-images/settings#naming') }}
+
+                <div class="field">
+                    <div class="heading">
+                        <label for="assetPath">{{ "Asset path template"|t('super-images') }}</label>
+                    </div>
+                    <div class="instructions">
+                        <p>{{ "Default:"|t('super-images') }} <code>{{ namingDefaults.assetPath }}</code></p>
+                    </div>
+                    <div class="input">
+                        <input
+                            id="assetPath"
+                            type="text"
+                            name="assetPath"
+                            class="text fullwidth code"
+                            value="{{ naming.assetPath }}"
+                            {% if configFileOverridesNaming %}readonly{% endif %}
+                        >
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="heading">
+                        <label for="path">{{ "Local / remote path template"|t('super-images') }}</label>
+                    </div>
+                    <div class="instructions">
+                        <p>{{ "Default:"|t('super-images') }} <code>{{ namingDefaults.path }}</code></p>
+                    </div>
+                    <div class="input">
+                        <input
+                            id="path"
+                            type="text"
+                            name="path"
+                            class="text fullwidth code"
+                            value="{{ naming.path }}"
+                            {% if configFileOverridesNaming %}readonly{% endif %}
+                        >
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="heading">
+                        <label for="transformHashLength">{{ "Transform hash length"|t('super-images') }}</label>
+                    </div>
+                    <div class="instructions">
+                        <p>{{ "Characters taken from the generation identity for {transformHash} (8–64)."|t('super-images') }}</p>
+                    </div>
+                    <div class="input">
+                        <input
+                            id="transformHashLength"
+                            type="number"
+                            name="transformHashLength"
+                            class="text"
+                            min="8"
+                            max="64"
+                            value="{{ naming.transformHashLength }}"
+                            {% if configFileOverridesNaming %}readonly{% endif %}
+                        >
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="heading">
+                        <label>
+                            <input
+                                type="checkbox"
+                                name="includeVolumeInFolderHash"
+                                value="1"
+                                {% if naming.includeVolumeInFolderHash %}checked{% endif %}
+                                {% if configFileOverridesNaming %}disabled{% endif %}
+                            >
+                            {{ "Include volume handle in {folderHash}"|t('super-images') }}
+                        </label>
+                    </div>
+                </div>
+
+                {% if not configFileOverridesNaming %}
+                    <div class="buttons">
+                        <button type="submit" class="btn submit">{{ "Save naming"|t('super-images') }}</button>
+                        <button
+                            type="button"
+                            class="btn"
+                            onclick="document.getElementById('assetPath').value={{ namingDefaults.assetPath|json_encode|e('js') }};document.getElementById('path').value={{ namingDefaults.path|json_encode|e('js') }};document.getElementById('transformHashLength').value={{ namingDefaults.transformHashLength }};"
+                        >{{ "Reset to defaults"|t('super-images') }}</button>
+                    </div>
+                {% endif %}
+            </form>
+
+            <h4 style="margin:24px 0 10px;">{{ "Available tokens"|t('super-images') }}</h4>
+            <table class="data fullwidth">
+                <thead>
+                    <tr>
+                        <th>{{ "Token"|t('super-images') }}</th>
+                        <th>{{ "Meaning"|t('super-images') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in namingTokens %}
+                        <tr>
+                            <td><code>{{ row.token }}</code></td>
+                            <td>{{ row.description|t('super-images') }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <h4 style="margin:24px 0 10px;">{{ "config/super-images.php"|t('super-images') }}</h4>
+            <pre class="code" style="white-space:pre-wrap;padding:12px;border:1px solid #e3e5e8;border-radius:6px;background:#f3f7fc;">'storage' => [
+    // …
+    'naming' => [
+        'assetPath' => '{{ naming.assetPath }}',
+        'path' => '{{ naming.path }}',
+        'transformHashLength' => {{ naming.transformHashLength }},
+        'includeVolumeInFolderHash' => {{ naming.includeVolumeInFolderHash ? 'true' : 'false' }},
+    ],
+],</pre>
+            <p class="light">
+                {{ "Compact single-hash alternative:"|t('super-images') }}
+                <code>'assetPath' => '{transformFolderHash}/{assetId}/{basename}-{variant}.{ext}'</code>
+            </p>
+        </section>
+
         <section class="si-settings__panel">
             <h3>{{ "Profiles"|t('super-images') }}</h3>
             <table class="data fullwidth">

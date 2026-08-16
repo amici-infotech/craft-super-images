@@ -18,7 +18,7 @@ use craft\base\Model;
 class Settings extends Model
 {
     /** @var int Schema version included in generation identity payloads. */
-    public const SCHEMA_VERSION = 3;
+    public const SCHEMA_VERSION = 4;
 
     /** @var bool Whether the plugin processes generation requests. */
     public bool $enabled = true;
@@ -99,6 +99,21 @@ class Settings extends Model
         'markers' => [
             'enabled' => true,
             'path' => '@storage/super-images/markers',
+        ],
+        /**
+         * Derivative path naming templates.
+         * Tokens: {folderHash} {transformHash} {transformFolderHash} {identity}
+         * {identityShort} {identityShard} {assetId} {basename} {variant} {profile}
+         * {format} {ext} {namespace} {volume}
+         *
+         * Default asset paths include {transformHash} (from the generation identity)
+         * so changing ops/settings always creates a new folder instead of reusing cache.
+         */
+        'naming' => [
+            'assetPath' => '{folderHash}/{transformHash}/{assetId}/{basename}-{variant}.{ext}',
+            'path' => '{identityShard}/{basename}-{variant}.{ext}',
+            'transformHashLength' => 16,
+            'includeVolumeInFolderHash' => false,
         ],
         'adapters' => [
             'local' => [

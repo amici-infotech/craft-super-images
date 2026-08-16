@@ -12,6 +12,7 @@ namespace amici\SuperImages;
 
 use amici\SuperImages\base\PluginTrait;
 use amici\SuperImages\models\Settings;
+use amici\SuperImages\services\StoragePathBuilder;
 use amici\SuperImages\variables\SuperImagesVariable;
 use Craft;
 use craft\base\Model;
@@ -107,6 +108,28 @@ class Plugin extends CraftPlugin
     protected function createSettingsModel(): ?Model
     {
         return new Settings();
+    }
+
+    /**
+     * Returns settings with storage.naming defaults deep-merged.
+     *
+     * Craft config files often replace the whole `storage` array; this keeps path
+     * naming defaults (and partial overrides) available.
+     *
+     * @return Settings
+     */
+    public function getSettings(): Settings
+    {
+        /** @var Settings $settings */
+        $settings = parent::getSettings();
+        $storage = $settings->storage;
+        $storage['naming'] = array_merge(
+            StoragePathBuilder::defaultNaming(),
+            is_array($storage['naming'] ?? null) ? $storage['naming'] : [],
+        );
+        $settings->storage = $storage;
+
+        return $settings;
     }
 
     /**
@@ -274,6 +297,7 @@ class Plugin extends CraftPlugin
                     'super-images/playground/generate' => 'super-images/playground/generate',
                     'super-images/diagnostics' => 'super-images/diagnostics/index',
                     'super-images/settings' => 'super-images/settings/index',
+                    'super-images/settings/save-naming' => 'super-images/settings/save-naming',
                     'super-images/encoders' => 'super-images/encoders/index',
                 ]);
             }
