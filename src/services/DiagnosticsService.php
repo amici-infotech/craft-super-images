@@ -458,7 +458,7 @@ class DiagnosticsService extends Component
     /**
      * Compact summary for the CP dashboard widget.
      *
-     * @return array<string, mixed> Dashboard payload with settings snapshot, doctor results, queue, and binaries.
+     * @return array<string, mixed> Dashboard payload with settings snapshot, delivery mode, doctor results, queue, and binaries.
      */
     public function dashboardSummary(): array
     {
@@ -479,9 +479,12 @@ class DiagnosticsService extends Component
             $selectedDriver = null;
         }
 
+        $beforePageLoad = $plugin->getDeliveryUrls()->generatesBeforePageLoad();
+
         return [
             'enabled' => $settings->enabled,
-            'generateBeforePageLoad' => $plugin->getDeliveryUrls()->generatesBeforePageLoad(),
+            'generateBeforePageLoad' => $beforePageLoad,
+            'deliveryMode' => $beforePageLoad ? 'Before page load' : 'Runtime',
             'defaultProfile' => $settings->defaultProfile,
             'defaultFormat' => $settings->defaultFormat,
             'driver' => $settings->driver,

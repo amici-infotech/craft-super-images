@@ -27,7 +27,7 @@ equivalent).
 php craft super-images/status
 ```
 
-No options. Prints a JSON snapshot: `enabled`, `deliveryMode`, `storageDefault`,
+No options. Prints a JSON snapshot: `enabled`, `generateBeforePageLoad`, `storageDefault`,
 `autoGenerate` config, `runtime` (enabled + urlTtl), the selected driver and the
 formats it supports, and `queuePending` (pending Craft queue job count, if the
 queue table exists).
