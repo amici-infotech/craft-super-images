@@ -118,6 +118,56 @@ class ExistenceMarkerStore extends Component
     }
 
     /**
+     * Finds a marker whose stored storage path matches (identity hash drift fallback).
+     *
+     * @param string $storagePath Relative storage path from {@see StoragePathBuilder}.
+     *
+     * @return array{identity?: string, createdAt?: int, metadata?: array<string, mixed>}|null
+     */
+    public function findByStoragePath(string $storagePath): ?array
+    {
+        if (!$this->isEnabled() || $storagePath === '') {
+            return null;
+        }
+
+        $this->boot();
+        $root = (string) $this->_rootPath;
+
+        if (!is_dir($root)) {
+            return null;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \RecursiveDirectoryIterator::SKIP_DOTS),
+        );
+
+        /** @var \SplFileInfo $node */
+        foreach ($iterator as $node) {
+            if (!$node->isFile() || !str_ends_with($node->getFilename(), '.marker')) {
+                continue;
+            }
+
+            $raw = file_get_contents($node->getPathname());
+            if ($raw === false || $raw === '') {
+                continue;
+            }
+
+            try {
+                /** @var array{identity?: string, metadata?: array<string, mixed>} $payload */
+                $payload = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                continue;
+            }
+
+            if ((string) ($payload['metadata']['path'] ?? '') === $storagePath) {
+                return is_array($payload) ? $payload : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Deletes the marker file for the given derivative identity when present.
      *
      * @param string $identity Stable derivative identity hash or key.

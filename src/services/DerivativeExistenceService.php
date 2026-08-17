@@ -22,8 +22,21 @@ final class DerivativeExistenceService extends Component
     /** @var array<string, bool> Per-request cache keyed by generation identity. */
     private array $_cache = [];
 
+    /** @var array<int, array<string, array{identity: string, storagePath: string, adapter: string}>> Asset ID → identity map. */
+    private array $_assetIndexMaps = [];
+
+    /** @var array<string, array{identity?: string, createdAt?: int, metadata?: array<string, mixed>}|null> Marker payload cache. */
+    private array $_markerCache = [];
+
+    /** @var array<string, array{identity?: string, createdAt?: int, metadata?: array<string, mixed>}|null> Storage path → marker cache. */
+    private array $_markerByPathCache = [];
+
     /**
      * Whether a derivative already exists in storage (or is known locally).
+     *
+     * For remote adapters, a matching existence marker or asset-index entry is
+     * trusted without a network HEAD — markers are only written after a
+     * successful upload. Stale entries (wrong adapter) are cleared locally.
      *
      * @param string $storageAdapter Adapter handle.
      * @param string $storagePath Relative storage path.
@@ -48,41 +61,58 @@ final class DerivativeExistenceService extends Component
 
         if ($remote) {
             $markers = $plugin->getExistenceMarkers();
-            $localShortcut = false;
 
             if ($markers->isEnabled() && $markers->exists($identity)) {
-                $payload = $markers->read($identity);
-                $markerAdapter = (string) ($payload['metadata']['adapter'] ?? '');
+                $payload = $this->_markerPayload($identity);
+                $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+                $markerAdapter = (string) ($metadata['adapter'] ?? '');
+                $markerPath = (string) ($metadata['path'] ?? '');
 
-                if ($markerAdapter !== '' && $markerAdapter !== $storageAdapter) {
+                if (
+                    ($markerAdapter !== '' && $markerAdapter !== $storageAdapter)
+                    || ($markerPath !== '' && $markerPath !== $storagePath)
+                ) {
                     $markers->delete($identity);
+                    unset($this->_markerCache[$identity]);
                 } else {
-                    $localShortcut = true;
+                    return $this->_remember($identity, true);
                 }
             }
 
-            if (!$localShortcut && $assetId !== null) {
-                $entry = $this->_findIndexedEntry($assetId, $identity);
+            if ($assetId !== null) {
+                $entry = $this->_indexedEntry($assetId, $identity);
+
+                if ($entry === null && $storagePath !== '') {
+                    $entry = $this->_indexedEntryByPath($assetId, $storagePath);
+                }
 
                 if ($entry !== null) {
                     $entryAdapter = (string) ($entry['adapter'] ?? '');
+                    $entryPath = (string) ($entry['storagePath'] ?? '');
 
-                    if ($entryAdapter !== '' && $entryAdapter !== $storageAdapter) {
+                    if (
+                        ($entryAdapter !== '' && $entryAdapter !== $storageAdapter)
+                        || ($entryPath !== '' && $entryPath !== $storagePath)
+                    ) {
                         $plugin->getAssetDerivativeIndex()->forget($assetId, $identity);
+                        unset($this->_assetIndexMaps[$assetId]);
                     } else {
-                        $localShortcut = true;
+                        return $this->_remember($identity, true);
                     }
                 }
             }
 
-            if ($localShortcut) {
-                if ($adapter->exists($storagePath)) {
-                    return $this->_remember($identity, true);
+            if ($storagePath !== '') {
+                $payload = $this->_markerByPath($storagePath);
+
+                if ($payload !== null) {
+                    $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+                    $markerAdapter = (string) ($metadata['adapter'] ?? '');
+
+                    if ($markerAdapter === '' || $markerAdapter === $storageAdapter) {
+                        return $this->_remember($identity, true);
+                    }
                 }
-
-                $this->_purgeLocal($identity, $assetId);
-
-                return $this->_remember($identity, false);
             }
         }
 
@@ -92,17 +122,62 @@ final class DerivativeExistenceService extends Component
     }
 
     /**
-     * Finds one indexed entry for an asset/identity pair.
+     * Loads a marker payload once per request.
+     *
+     * @param string $identity Generation identity hash.
+     *
+     * @return array{identity?: string, createdAt?: int, metadata?: array<string, mixed>}|null
+     */
+    private function _markerPayload(string $identity): ?array
+    {
+        if (!array_key_exists($identity, $this->_markerCache)) {
+            $this->_markerCache[$identity] = Plugin::getInstance()->getExistenceMarkers()->read($identity);
+        }
+
+        return $this->_markerCache[$identity];
+    }
+
+    /**
+     * @return array{identity?: string, createdAt?: int, metadata?: array<string, mixed>}|null
+     */
+    private function _markerByPath(string $storagePath): ?array
+    {
+        if (!array_key_exists($storagePath, $this->_markerByPathCache)) {
+            $this->_markerByPathCache[$storagePath] = Plugin::getInstance()
+                ->getExistenceMarkers()
+                ->findByStoragePath($storagePath);
+        }
+
+        return $this->_markerByPathCache[$storagePath];
+    }
+
+    /**
+     * Finds one indexed entry, loading the asset index once per request.
      *
      * @param int $assetId Craft asset element ID.
      * @param string $identity Generation identity hash.
      *
      * @return array{identity: string, storagePath: string, adapter: string}|null
      */
-    private function _findIndexedEntry(int $assetId, string $identity): ?array
+    private function _indexedEntry(int $assetId, string $identity): ?array
     {
-        foreach (Plugin::getInstance()->getAssetDerivativeIndex()->entries($assetId) as $entry) {
-            if ($entry['identity'] === $identity) {
+        $map = $this->_assetIndexMap($assetId);
+
+        return $map[$identity] ?? null;
+    }
+
+    /**
+     * Finds an indexed entry by storage path when identity lookup misses.
+     *
+     * @param int $assetId Craft asset element ID.
+     * @param string $storagePath Relative storage path.
+     *
+     * @return array{identity: string, storagePath: string, adapter: string}|null
+     */
+    private function _indexedEntryByPath(int $assetId, string $storagePath): ?array
+    {
+        foreach ($this->_assetIndexMap($assetId) as $entry) {
+            if ($entry['storagePath'] === $storagePath) {
                 return $entry;
             }
         }
@@ -111,21 +186,19 @@ final class DerivativeExistenceService extends Component
     }
 
     /**
-     * Clears stale local marker/index entries when the remote object is missing.
-     *
-     * @param string $identity Generation identity hash.
-     * @param int|null $assetId Craft asset ID when known.
-     *
-     * @return void
+     * @return array<string, array{identity: string, storagePath: string, adapter: string}>
      */
-    private function _purgeLocal(string $identity, ?int $assetId): void
+    private function _assetIndexMap(int $assetId): array
     {
-        $plugin = Plugin::getInstance();
-        $plugin->getExistenceMarkers()->delete($identity);
-
-        if ($assetId !== null) {
-            $plugin->getAssetDerivativeIndex()->forget($assetId, $identity);
+        if (!isset($this->_assetIndexMaps[$assetId])) {
+            $map = [];
+            foreach (Plugin::getInstance()->getAssetDerivativeIndex()->entries($assetId) as $entry) {
+                $map[$entry['identity']] = $entry;
+            }
+            $this->_assetIndexMaps[$assetId] = $map;
         }
+
+        return $this->_assetIndexMaps[$assetId];
     }
 
     /**

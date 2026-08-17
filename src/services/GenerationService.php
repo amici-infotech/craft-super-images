@@ -41,6 +41,9 @@ use yii\base\Component;
  */
 class GenerationService extends Component
 {
+    /** @var array<string, array<string, mixed>> Per-request plan cache keyed by request fingerprint. */
+    private array $_planCache = [];
+
     /**
      * Event fired before a derivative is generated (including skip checks).
      */
@@ -86,6 +89,11 @@ class GenerationService extends Component
      */
     public function plan(GenerationRequest $request): array
     {
+        $cacheKey = $this->planCacheKey($request);
+        if (isset($this->_planCache[$cacheKey])) {
+            return $this->_planCache[$cacheKey];
+        }
+
         $plugin = Plugin::getInstance();
         $this->validateRequest($request);
 
@@ -134,7 +142,7 @@ class GenerationService extends Component
 
         $adapter = $plugin->getStorageManager()->select($definition->storageAdapter);
 
-        return [
+        return $this->_planCache[$cacheKey] = [
             'identity' => $identity,
             'storagePath' => $storagePath,
             'definition' => $definition,
@@ -142,6 +150,33 @@ class GenerationService extends Component
             'driverName' => $driver->name(),
             'storageUrl' => $adapter->url($storagePath),
         ];
+    }
+
+    /**
+     * Builds a stable cache key for {@see plan()} within the current request.
+     *
+     * @param GenerationRequest $request Generation request.
+     *
+     * @return string Fingerprint string.
+     */
+    private function planCacheKey(GenerationRequest $request): string
+    {
+        $ops = null;
+        if ($request->operationOverrides !== null) {
+            $ops = array_map(static fn($op) => $op->toArray(), $request->operationOverrides);
+        }
+
+        return hash('sha256', json_encode([
+            'assetId' => $request->assetId,
+            'localPath' => $request->localPath,
+            'remoteUrl' => $request->remoteUrl,
+            'profile' => $request->profile,
+            'variant' => $request->variant,
+            'format' => $request->format,
+            'operations' => $ops,
+            'storageAdapter' => $request->storageAdapter,
+            'preview' => $request->preview,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
     }
 
     /**
