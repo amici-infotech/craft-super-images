@@ -222,11 +222,13 @@ final class S3CompatibleStorageAdapter implements StorageAdapterInterface
      */
     public function url(string $path): string
     {
+        $key = $this->key($path);
+
         if ($this->_baseUrl !== '') {
-            return $this->_baseUrl . '/' . ltrim(str_replace('\\', '/', $path), '/');
+            return $this->_baseUrl . '/' . $key;
         }
 
-        return (string)$this->_client->getObjectUrl($this->_bucket, $this->key($path));
+        return (string) $this->_client->getObjectUrl($this->_bucket, $key);
     }
 
     /**

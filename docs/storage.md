@@ -41,6 +41,43 @@ Tips:
 
 Requires `aws/aws-sdk-php`.
 
+Uploads use `public-read` ACL by default. If browser URLs 404 while the object
+exists in the bucket, **`baseUrl` is pointing at the wrong host** — not a missing
+file. Verify with curl against the origin/CDN URL from the Spaces console.
+
+### DigitalOcean Spaces
+
+Use type `spaces` (same adapter as S3). Object keys include `prefix`; public
+URLs must include that prefix too (the adapter adds it automatically).
+
+```php
+'spaces' => [
+    'type' => 'spaces',
+    'keyId' => App::env('SPACES_ACCESS_KEY_ID'),
+    'secret' => App::env('SPACES_SECRET_ACCESS_KEY'),
+    'bucket' => App::env('SPACES_BUCKET'),       // e.g. paragonn-cdn8
+    'region' => App::env('SPACES_REGION'),       // e.g. nyc3
+    'endpoint' => App::env('SPACES_ENDPOINT'),     // https://nyc3.digitaloceanspaces.com
+    'prefix' => 'transforms/super-images/',
+    // Must match a host that serves THIS bucket (origin or DO CDN endpoint):
+    'baseUrl' => App::env('SPACES_BASE_URL'),
+    // e.g. https://paragonn-cdn8.nyc3.cdn.digitaloceanspaces.com
+],
+```
+
+Working URL shape:
+
+```text
+https://{bucket}.{region}.cdn.digitaloceanspaces.com/{prefix}{folderHash}/{transformHash}/{assetId}/{file}.{ext}
+```
+
+A custom domain (e.g. `assets.example.org`) only works after you link it under
+**Spaces → your bucket → Settings → CDN → Custom subdomain**. If the same domain
+is also used for Cloudflare R2 or another origin, Spaces objects will 404 there
+even though they exist in the bucket.
+
+### Generic S3 / R2
+
 ```php
 's3' => [
     'type' => 's3',

@@ -69,8 +69,11 @@ class StorageManager extends Component
      */
     public function registerFromConfig(array $storageConfig): void
     {
+        $s3Factory = static fn(string $name, array $config): StorageAdapterInterface => new S3CompatibleStorageAdapter($name, $config);
         $this->_types['local'] = static fn(string $name, array $config): StorageAdapterInterface => new LocalStorageAdapter($name, $config);
-        $this->_types['s3'] = static fn(string $name, array $config): StorageAdapterInterface => new S3CompatibleStorageAdapter($name, $config);
+        $this->_types['s3'] = $s3Factory;
+        // DigitalOcean Spaces and other S3-compatible providers share the same adapter.
+        $this->_types['spaces'] = $s3Factory;
 
         $adapters = $storageConfig['adapters'] ?? [];
 

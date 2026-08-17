@@ -117,7 +117,7 @@ return [
         // Named storage adapters.
         'adapters' => [
             'local' => [
-                // Adapter type: local | s3
+                // Adapter type: local | s3 | spaces (S3-compatible, e.g. DigitalOcean Spaces)
                 'type' => 'local',
                 // Filesystem root for derivatives.
                 'path' => '@webroot/uploads/super-images',
