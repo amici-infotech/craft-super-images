@@ -19,23 +19,62 @@ use amici\SuperImages\models\ImageHandle;
 use amici\SuperImages\Plugin;
 use Craft;
 
+/**
+ * Example WebP Encoder
+ *
+ * Demonstrates the PNG→cwebp pipeline Super Images uses internally when
+ * `optimizers.webp = 'cwebp'`, but implemented as a standalone encoder class.
+ */
 final class ExampleWebpEncoder implements EncoderInterface
 {
+    /**
+     * Returns the encoder identifier used in diagnostics.
+     *
+     * @return string
+     */
     public function name(): string
     {
         return 'example-cwebp';
     }
 
+    /**
+     * Lists output formats this encoder registers (replaces native for these formats).
+     *
+     * @return list<string>
+     */
     public function formats(): array
     {
         return ['webp'];
     }
 
+    /**
+     * Whether this encoder can produce the requested format.
+     *
+     * @param string $format Target format slug.
+     *
+     * @return bool
+     */
     public function supports(string $format): bool
     {
         return strtolower($format) === 'webp';
     }
 
+    /**
+     * Encodes the handle to WebP using cwebp when available, otherwise native WebP.
+     *
+     * Flow:
+     * 1. Resolve `cwebp` binary via BinaryResolver (honours `$options->extra['binary']`).
+     * 2. Encode a lossless PNG intermediate via the active driver.
+     * 3. Run cwebp with quality/method from EncodeOptions.
+     * 4. On failure, fall back to driver native WebP (never ship PNG as `.webp`).
+     *
+     * @param ImageHandle $handle Loaded image resource from the active driver.
+     * @param string $format Target output format slug (must be `webp`).
+     * @param EncodeOptions $options Quality, metadata stripping, and format extras.
+     * @param ImageDriverInterface $driver Driver used for native encode fallback.
+     *
+     * @return EncodedImage WebP bytes on disk or in memory.
+     */
     public function encode(
         ImageHandle $handle,
         string $format,
@@ -49,6 +88,7 @@ final class ExampleWebpEncoder implements EncoderInterface
             return $driver->encodeNative($handle, 'webp', $options);
         }
 
+        // Lossless PNG preserves quality before lossy WebP conversion.
         $png = $driver->encodeNative(
             $handle,
             'png',

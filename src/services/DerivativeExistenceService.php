@@ -62,6 +62,9 @@ final class DerivativeExistenceService extends Component
         if ($remote) {
             $markers = $plugin->getExistenceMarkers();
 
+            // Fast path 1: identity marker — written only after a successful remote upload.
+            // Trust without HEAD (~300 ms on R2/S3). Invalidate when adapter/path drift
+            // (e.g. after switching storage backends or changing path layout).
             if ($markers->isEnabled() && $markers->exists($identity)) {
                 $payload = $this->_markerPayload($identity);
                 $meta = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
@@ -74,6 +77,8 @@ final class DerivativeExistenceService extends Component
                 }
             }
 
+            // Fast path 2: per-asset derivative index (used by cleanup and remote purge).
+            // Fall back to path lookup when identity hash changed but storage path stayed the same.
             if ($assetId !== null) {
                 $entry = $this->_indexedEntry($assetId, $identity)
                     ?? ($storagePath !== '' ? $this->_indexedEntryByPath($assetId, $storagePath) : null);
@@ -88,6 +93,7 @@ final class DerivativeExistenceService extends Component
                 }
             }
 
+            // Fast path 3: marker indexed by storage path (covers identity drift without HEAD).
             if ($storagePath !== '') {
                 $payload = $this->_markerByPath($storagePath);
 
@@ -101,6 +107,8 @@ final class DerivativeExistenceService extends Component
                 }
             }
         }
+
+        // Slow path: network HEAD / filesystem stat when no local trust signal exists.
 
         $objectExists = $adapter->exists($storagePath);
 
@@ -124,6 +132,13 @@ final class DerivativeExistenceService extends Component
     }
 
     /**
+     * Loads a marker payload by storage path, cached once per request.
+     *
+     * Used when the generation identity hash changed (config/ops drift) but the
+     * deterministic storage path stayed the same — avoids a remote HEAD in that case.
+     *
+     * @param string $storagePath Relative storage path.
+     *
      * @return array{identity?: string, createdAt?: int, metadata?: array<string, mixed>}|null
      */
     private function _markerByPath(string $storagePath): ?array
@@ -172,6 +187,10 @@ final class DerivativeExistenceService extends Component
     }
 
     /**
+     * Builds and caches the asset-index map for one Craft asset ID per request.
+     *
+     * @param int $assetId Craft asset element ID.
+     *
      * @return array<string, array{identity: string, storagePath: string, adapter: string}>
      */
     private function _assetIndexMap(int $assetId): array
@@ -190,7 +209,19 @@ final class DerivativeExistenceService extends Component
     /**
      * Whether stored adapter/path metadata no longer matches the requested location.
      *
-     * @param array<string, mixed> $fields Marker metadata or asset-index entry.
+     * Markers and asset-index entries record which adapter and path they belong to.
+     * When config changes (new R2 bucket, different `baseUrl`, path prefix tweak), old
+     * records must be discarded so we do not trust a cache hit for the wrong object.
+     *
+     * Empty stored values are treated as "unknown" and do not trigger a mismatch.
+     *
+     * @param array<string, mixed> $fields Marker `metadata` or asset-index entry row.
+     * @param string $expectedAdapter Adapter handle for this existence check.
+     * @param string $expectedPath Relative storage path for this existence check.
+     * @param string $adapterKey Key holding the adapter name inside `$fields` (`adapter`).
+     * @param string $pathKey Key holding the storage path inside `$fields` (`path` or `storagePath`).
+     *
+     * @return bool True when the stored location no longer matches and the record is stale.
      */
     private function _locationMismatch(
         array $fields,

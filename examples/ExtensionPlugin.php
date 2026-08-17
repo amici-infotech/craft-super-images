@@ -19,23 +19,40 @@ use craft\base\Plugin;
 use yii\base\Event;
 
 /**
- * Reference only — rename the namespace and merge into your real plugin.
+ * Extension Plugin (reference only)
+ *
+ * Demonstrates wiring storage adapters, encoders, optimizers, and operations
+ * from a single Craft plugin init() hook. Rename the namespace and merge into
+ * your real plugin class.
  */
 class ExtensionPlugin extends Plugin
 {
+    /**
+     * Boots the plugin and registers Super Images extension points.
+     *
+     * @return void
+     */
     public function init(): void
     {
         parent::init();
         $this->registerSuperImagesExtensions();
     }
 
+    /**
+     * Registers all Super Images extension listeners.
+     *
+     * Each listener runs during Super Images boot before generation. Craft plugin
+     * init order is sufficient — you do not need a custom bootstrap priority.
+     *
+     * @return void
+     */
     private function registerSuperImagesExtensions(): void
     {
         Event::on(
             StorageManager::class,
             StorageManager::EVENT_REGISTER_STORAGE_ADAPTERS,
             static function (RegisterStorageAdaptersEvent $event): void {
-                // Config-driven: 'type' => 'acme' in config/super-images.php
+                // Config-driven: set 'type' => 'acme' in config/super-images.php adapters block.
                 $event->types['acme'] = static fn(string $name, array $config) => new storage\ExampleStorageAdapter($name, $config);
 
                 // Or register a ready-made instance (overrides config for that handle):
@@ -47,7 +64,7 @@ class ExtensionPlugin extends Plugin
             EncoderManager::class,
             EncoderManager::EVENT_REGISTER_ENCODERS,
             static function (RegisterEncodersEvent $event): void {
-                // Replaces the native encoder for WebP while registered (keyed by format).
+                // Replaces the native encoder for WebP while this plugin is loaded.
                 $event->encoders[] = new encoders\ExampleWebpEncoder();
             },
         );
@@ -56,7 +73,7 @@ class ExtensionPlugin extends Plugin
             OptimizerManager::class,
             OptimizerManager::EVENT_REGISTER_OPTIMIZERS,
             static function (RegisterOptimizersEvent $event): void {
-                // name() must match optimizers.jpeg (or per-format tool string) in config
+                // name() must match the tool string in config, e.g. optimizers.jpeg = 'example-jpeg'.
                 $event->optimizers[] = new optimizers\ExampleOptimizer();
             },
         );
