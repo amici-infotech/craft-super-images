@@ -58,6 +58,10 @@ Full index: [docs/README.md](docs/README.md)
 
 Example config: `config/super-images.example.php`
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## License
 
 Proprietary — Amici Infotech
