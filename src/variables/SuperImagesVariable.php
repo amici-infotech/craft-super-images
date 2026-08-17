@@ -43,6 +43,21 @@ class SuperImagesVariable
     }
 
     /**
+     * Web-relative path to the bundled demo sample when present under `@webroot/images/`.
+     *
+     * Used by demo templates to avoid hitting a remote CDN on every tryGenerate card.
+     *
+     * @return string|null e.g. `/images/super-images-demo.jpg`, or null when the file is missing.
+     */
+    public function localDemoSource(): ?string
+    {
+        $relative = '/images/super-images-demo.jpg';
+        $absolute = Craft::getAlias('@webroot') . $relative;
+
+        return is_file($absolute) ? $relative : null;
+    }
+
+    /**
      * Generate a derivative and return the full result object.
      *
      * Options: `profile`, `variant`, `format`, `storage`.
@@ -76,7 +91,7 @@ class SuperImagesVariable
         try {
             return $this->generate($source, $options);
         } catch (SuperImagesException $exception) {
-            Craft::warning($exception->getMessage(), __METHOD__);
+            Craft::warning($exception->getMessage(), 'super-images');
 
             return null;
         }

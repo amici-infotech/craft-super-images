@@ -54,6 +54,16 @@ class SourceResolver extends Component
     private array $_sourceCache = [];
 
     /**
+     * In-request cache of remote download payloads keyed by URL hash.
+     *
+     * Demo pages call tryGenerate many times per request; without this each call
+     * re-fetches the same CDN original.
+     *
+     * @var array<string, array{body: string, mime: ?string}>
+     */
+    private array $_remoteBodyCache = [];
+
+    /**
      * Resolve a generation request into a usable SourceImage on disk.
      *
      * @param GenerationRequest $request The generation request with exactly one source.
@@ -345,14 +355,19 @@ class SourceResolver extends Component
             throw new InvalidConfigurationException('Remote URL sources are disabled.');
         }
 
-        $guard = new UrlGuard(
-            $remoteConfig['allowedHosts'] ?? [],
-            (int) ($remoteConfig['timeout'] ?? 10),
-            (int) ($remoteConfig['maxBytes'] ?? 25_000_000),
-            (int) ($remoteConfig['maxRedirects'] ?? 3),
-        );
+        $cacheKey = hash('sha256', $remoteUrl);
+        if (!isset($this->_remoteBodyCache[$cacheKey])) {
+            $guard = new UrlGuard(
+                $remoteConfig['allowedHosts'] ?? [],
+                (int) ($remoteConfig['timeout'] ?? 10),
+                (int) ($remoteConfig['maxBytes'] ?? 25_000_000),
+                (int) ($remoteConfig['maxRedirects'] ?? 3),
+            );
 
-        $download = $guard->download($remoteUrl);
+            $this->_remoteBodyCache[$cacheKey] = $guard->download($remoteUrl);
+        }
+
+        $download = $this->_remoteBodyCache[$cacheKey];
         $path = Plugin::getInstance()->getTemporaryFiles()->write(
             'remote-source-',
             $download['body'],

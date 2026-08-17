@@ -1,12 +1,12 @@
 {% do craft.app.response.headers.set('X-Robots-Tag', 'noindex, nofollow') %}
 
-{# Portable CDN original — no Craft Asset required. Optional ?asset=ID overrides for local testing. #}
+{# Local sample first (many tryGenerate calls per page). Optional ?asset=ID overrides. #}
+{% set localSampleWeb = craft.superImages.localDemoSource() %}
 {% set cdnSample = 'https://picsum.photos/id/1015/1600/1000.jpg' %}
-{% set cdnSampleHost = 'picsum.photos' %}
 {% set assetId = craft.app.request.getQueryParam('asset') %}
 {% set asset = assetId ? craft.assets.id(assetId).kind('image').one() : null %}
-{% set demoSource = asset ?? cdnSample %}
-{% set demoSourceCode = asset ? 'asset' : ("'" ~ cdnSample ~ "'") %}
+{% set demoSource = asset ?? (localSampleWeb ?? cdnSample) %}
+{% set demoSourceCode = asset ? 'asset' : (localSampleWeb ? ("'" ~ localSampleWeb ~ "'") : ("'" ~ cdnSample ~ "'")) %}
 {% set demoProfile = 'responsive' %}
 {% set demoWidth = 640 %}
 {% set demoFormat = 'jpg' %}
@@ -215,9 +215,13 @@
         </div>
         <div class="mt-4 space-y-2">
           <p class="rounded-lg border border-teal-500/20 bg-teal-500/10 px-3 py-2 text-[11px] leading-relaxed text-teal-800 dark:text-teal-200/90">
-            Universal demo source: CDN image (Picsum). No Craft Asset ID required.
+            {% if localSampleWeb %}
+              Demo source: local file <code class="text-[10px]">{{ localSampleWeb }}</code> (from plugin <code class="text-[10px]">demo/assets/</code>).
+            {% else %}
+              Demo source: Picsum CDN — copy <code class="text-[10px]">demo/assets/super-images-demo.jpg</code> to <code class="text-[10px]">web/images/</code> to skip network.
+            {% endif %}
           </p>
-          <p class="truncate font-mono text-[10px] text-zinc-500" title="{{ cdnSample }}">{{ cdnSample }}</p>
+          <p class="truncate font-mono text-[10px] text-zinc-500" title="{{ demoSource }}">{{ demoSource }}</p>
           {% if asset %}
             <p class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
               Override active: Asset #{{ asset.id }} · {{ asset.filename }}

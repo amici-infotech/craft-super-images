@@ -132,7 +132,7 @@ class GenerateController extends Controller
      * Progress totals are estimated from profile × variant × format counts — we do
      * not run a full `plan()` pass over every derivative before work starts.
      *
-     * @return int Console exit code; non-zero when any unit fails.
+     * @return int Console exit code; non-zero only for command-level failures.
      */
     public function actionIndex(): int
     {
@@ -204,6 +204,8 @@ class GenerateController extends Controller
         $actualUnits = 0;
         $assetPosition = 0;
         $startedAt = microtime(true);
+        /** @var list<array{label: string, error: string}> $failures */
+        $failures = [];
 
         // Batch hydrate assets so we never hold 2k+ elements in memory at once.
         foreach ($query->batch(50) as $assets) {
@@ -270,33 +272,49 @@ class GenerateController extends Controller
                     continue;
                 }
 
-                $results = $generation->generateUnits($units, $this->force);
-
-                foreach ($units as $i => $unit) {
+                $generation->generateUnits($units, $this->force, function ($unit, $result) use (
+                    &$unitIndex,
+                    &$generated,
+                    &$skipped,
+                    &$failed,
+                    &$failures,
+                    $estimatedUnits,
+                    $asset,
+                ): void {
                     $unitIndex++;
                     $label = sprintf('%s/%s.%s', $unit->profile, $unit->variant, $unit->format);
                     $progress = sprintf('[%d/~%d]', $unitIndex, $estimatedUnits);
-                    $result = $results[$i] ?? null;
-
-                    if ($result === null) {
-                        $failed++;
-                        $this->stderr(sprintf("  %s [failed] %s — missing result\n", $progress, $label), Console::FG_RED);
-
-                        continue;
-                    }
 
                     if (($result->diagnostics['skipped'] ?? false) === true) {
                         $skipped++;
-                        $this->stdout(sprintf("  %s [skipped] %s\n", $progress, $label));
-                    } elseif (($result->diagnostics['failed'] ?? false) === true || !$result->success) {
-                        $failed++;
-                        $error = (string) ($result->diagnostics['error'] ?? 'unknown error');
-                        $this->stderr(sprintf("  %s [failed] %s — %s\n", $progress, $label, $error), Console::FG_RED);
-                    } else {
-                        $generated++;
-                        $this->stdout(sprintf("  %s [generated] %s → %s\n", $progress, $label, $result->url), Console::FG_GREEN);
+                        $this->stdout(sprintf(
+                            "  %s [already exists] %s → %s\n",
+                            $progress,
+                            $label,
+                            $result->url,
+                        ), Console::FG_GREEN);
+
+                        return;
                     }
-                }
+
+                    if (($result->diagnostics['failed'] ?? false) === true || !$result->success) {
+                        $failed++;
+                        $failures[] = [
+                            'label' => sprintf('#%d %s — %s', $asset->id, $asset->getFilename(), $label),
+                            'error' => (string) ($result->diagnostics['error'] ?? 'unknown error'),
+                        ];
+
+                        return;
+                    }
+
+                    $generated++;
+                    $this->stdout(sprintf(
+                        "  %s [generated] %s → %s\n",
+                        $progress,
+                        $label,
+                        $result->url,
+                    ), Console::FG_GREEN);
+                });
             }
         }
 
@@ -306,7 +324,7 @@ class GenerateController extends Controller
             $this->stdout(sprintf("\nDry-run complete (%d unit%s planned).\n", $actualUnits, $actualUnits === 1 ? '' : 's'));
         } else {
             $this->stdout(sprintf(
-                "\nSummary: generated=%d skipped=%d failed=%d queued=%d units=%d (%.1fs)\n",
+                "\nSummary: generated=%d already_exists=%d failed=%d queued=%d units=%d (%.1fs)\n",
                 $generated,
                 $skipped,
                 $failed,
@@ -314,8 +332,19 @@ class GenerateController extends Controller
                 $actualUnits,
                 $elapsed,
             ));
+
+            if ($failures !== []) {
+                $this->stdout("\nFailures:\n", Console::FG_YELLOW);
+                foreach ($failures as $failure) {
+                    $this->stdout(sprintf(
+                        "  • %s — %s\n",
+                        $failure['label'],
+                        $failure['error'],
+                    ), Console::FG_YELLOW);
+                }
+            }
         }
 
-        return $failed > 0 ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
+        return ExitCode::OK;
     }
 }

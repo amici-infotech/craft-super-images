@@ -113,16 +113,23 @@ final class UrlGuard
         $body = '';
 
         while (true) {
-            $handle = fopen($currentUrl, 'rb', false, $context);
+            $handle = @fopen($currentUrl, 'rb', false, $context);
 
             if ($handle === false) {
-                throw new SourceException('Unable to open remote URL.');
+                throw new SourceException($this->_openFailureMessage($currentUrl));
             }
 
             $body = '';
             while (!feof($handle)) {
-                $chunk = fread($handle, 8192);
+                $chunk = @fread($handle, 8192);
                 if ($chunk === false) {
+                    fclose($handle);
+                    throw new SourceException(sprintf(
+                        'Remote download interrupted for %s.',
+                        $this->_safeUrlForMessage($currentUrl),
+                    ));
+                }
+                if ($chunk === '') {
                     break;
                 }
                 $body .= $chunk;
@@ -132,7 +139,6 @@ final class UrlGuard
                 }
             }
 
-            $meta = stream_get_meta_data($handle);
             fclose($handle);
 
             $status = $this->_extractStatusCode($http_response_header ?? []);
@@ -312,5 +318,43 @@ final class UrlGuard
         $dir = rtrim(dirname($path), '/');
 
         return $scheme . '://' . $host . $dir . '/' . $location;
+    }
+
+    /**
+     * Build a safe error message when fopen() fails (timeout, DNS, SSL, etc.).
+     *
+     * @param string $url URL that could not be opened.
+     *
+     * @return string Exception message without leaking full query strings when possible.
+     */
+    private function _openFailureMessage(string $url): string
+    {
+        $error = error_get_last();
+        $detail = is_array($error) ? trim((string) ($error['message'] ?? '')) : '';
+
+        if ($detail !== '') {
+            // Strip absolute filesystem paths from PHP's fopen warning text.
+            $detail = preg_replace('#/[^\s:]+\.(php|inc)\(\d+\):\s*#', '', $detail) ?? $detail;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST) ?: $url;
+
+        return $detail !== ''
+            ? sprintf('Remote download failed (%s): %s', $host, $detail)
+            : sprintf('Remote download failed (%s).', $host);
+    }
+
+    /**
+     * Host-only URL for error messages.
+     *
+     * @param string $url Full URL.
+     *
+     * @return string Hostname or truncated URL.
+     */
+    private function _safeUrlForMessage(string $url): string
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) && $host !== '' ? $host : $url;
     }
 }

@@ -93,22 +93,28 @@ php craft super-images/generate --volume=images --profile=responsive --variant=l
 | `--limit` | | int | `0` | Cap the number of matching **assets** processed (`0` = no limit). Applied before unit expansion, so it limits assets, not units. |
 
 Console output estimates totals from profile × variant × format counts (no full
-`plan()` pass over the volume), then progresses per asset and per unit:
+`plan()` pass over the volume), then prints each transform as it finishes — not
+batched per asset after all variants complete:
 
 ```text
 Generating ~520 units across 87 assets (6 units/asset estimated).
 
 [asset 1/87] #101 hero.jpg (6 units)
   [1/~520] [generated] responsive/sm.webp → /transforms/super-images/417627…/101/hero-sm.webp
-  [2/~520] [skipped] responsive/sm.jpg
-  ...
+  [2/~520] [already exists] responsive/sm.jpg → /transforms/super-images/…/hero-sm.jpg
+  [3/~520] [generated] responsive/md.webp → …
 
-Summary: generated=430 skipped=88 failed=2 queued=0 units=520 (41.3s)
+Summary: generated=430 already_exists=88 failed=2 queued=0 units=520 (41.3s)
+
+Failures:
+  • #101 hero.jpg — responsive/lg.webp — Source file is missing
 ```
 
-`[skipped]` means the derivative already exists and `--force` wasn't set.
-`[failed]` prints the exception message and makes the command exit non-zero
-(`ExitCode::UNSPECIFIED_ERROR`) so it's easy to catch in CI/cron.
+`[already exists]` means the derivative is already in storage and `--force` wasn't set.
+
+Individual unit failures are listed under **Failures** at the end. The command
+exits **0** when the run completes; only bad flags or a disabled plugin return
+a non-zero exit code.
 
 Assets are processed in batches of 50. Each asset resolves its source file once
 and writes all variants before moving on.

@@ -20,6 +20,7 @@ From your Craft project root:
 
 ```bash
 cp -R vendor/amici/craft-super-images/demo templates/super-images
+cp vendor/amici/craft-super-images/demo/assets/super-images-demo.jpg web/images/
 ```
 
 Then open:
@@ -28,9 +29,11 @@ Then open:
 https://yoursite.test/super-images
 ```
 
-### Remote sample (recommended)
+Demo pages call `tryGenerate` many times (e.g. Geometry). The bundled **`web/images/super-images-demo.jpg`** avoids re-fetching a remote CDN on every card. Without it, demos fall back to Picsum (requires remote allow-list below).
 
-Demos use Picsum by default. Allow it once:
+### Remote sample (optional fallback)
+
+If the local demo file is missing, demos use Picsum. Allow it once:
 
 ```php
 // config/super-images.php
@@ -74,9 +77,10 @@ Use the sidebar “Optional: override with Asset ID” form. The `?asset=` query
 
 Layout bootstrap (`_layout.twig`):
 
-1. Default source = Picsum CDN URL  
-2. Optional `?asset=` → Craft Asset  
-3. Twig code samples use `demoSourceCode` so copied snippets work on any site  
+1. Default source = local `/images/super-images-demo.jpg` when present  
+2. Else Picsum CDN URL  
+3. Optional `?asset=` → Craft Asset  
+4. Twig code samples use `demoSourceCode` so copied snippets work on any site  
 
 Image watermark / overlay examples that need a **local file path** are shown as code-only (Imagick cannot read a remote watermark URL the same way).
 

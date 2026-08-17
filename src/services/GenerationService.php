@@ -152,10 +152,12 @@ class GenerationService extends Component
      *
      * @param list<ManifestUnit> $units Planned generation units (typically one asset).
      * @param bool $force When true, regenerate even if derivatives already exist.
+     * @param (callable(ManifestUnit, GenerationResult): void)|null $onUnitComplete
+     *     Optional callback invoked after each unit finishes (generated, skipped, or failed).
      *
      * @return list<GenerationResult> Results in the same order as `$units`.
      */
-    public function generateUnits(array $units, bool $force = false): array
+    public function generateUnits(array $units, bool $force = false, ?callable $onUnitComplete = null): array
     {
         if ($units === []) {
             return [];
@@ -214,6 +216,10 @@ class GenerationService extends Component
                                 ],
                             );
 
+                            if ($onUnitComplete !== null) {
+                                $onUnitComplete($unit, $results[$index]);
+                            }
+
                             continue;
                         }
 
@@ -230,6 +236,10 @@ class GenerationService extends Component
                         }
 
                         $results[$index] = $result;
+
+                        if ($onUnitComplete !== null) {
+                            $onUnitComplete($unit, $result);
+                        }
                     }
                 } finally {
                     if ($assetIdForCache !== null) {
