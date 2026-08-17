@@ -64,14 +64,9 @@ final class DerivativeExistenceService extends Component
 
             if ($markers->isEnabled() && $markers->exists($identity)) {
                 $payload = $this->_markerPayload($identity);
-                $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
-                $markerAdapter = (string) ($metadata['adapter'] ?? '');
-                $markerPath = (string) ($metadata['path'] ?? '');
+                $meta = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
 
-                if (
-                    ($markerAdapter !== '' && $markerAdapter !== $storageAdapter)
-                    || ($markerPath !== '' && $markerPath !== $storagePath)
-                ) {
+                if ($this->_locationMismatch($meta, $storageAdapter, $storagePath, 'adapter', 'path')) {
                     $markers->delete($identity);
                     unset($this->_markerCache[$identity]);
                 } else {
@@ -80,20 +75,11 @@ final class DerivativeExistenceService extends Component
             }
 
             if ($assetId !== null) {
-                $entry = $this->_indexedEntry($assetId, $identity);
-
-                if ($entry === null && $storagePath !== '') {
-                    $entry = $this->_indexedEntryByPath($assetId, $storagePath);
-                }
+                $entry = $this->_indexedEntry($assetId, $identity)
+                    ?? ($storagePath !== '' ? $this->_indexedEntryByPath($assetId, $storagePath) : null);
 
                 if ($entry !== null) {
-                    $entryAdapter = (string) ($entry['adapter'] ?? '');
-                    $entryPath = (string) ($entry['storagePath'] ?? '');
-
-                    if (
-                        ($entryAdapter !== '' && $entryAdapter !== $storageAdapter)
-                        || ($entryPath !== '' && $entryPath !== $storagePath)
-                    ) {
+                    if ($this->_locationMismatch($entry, $storageAdapter, $storagePath, 'adapter', 'storagePath')) {
                         $plugin->getAssetDerivativeIndex()->forget($assetId, $identity);
                         unset($this->_assetIndexMaps[$assetId]);
                     } else {
@@ -106,8 +92,8 @@ final class DerivativeExistenceService extends Component
                 $payload = $this->_markerByPath($storagePath);
 
                 if ($payload !== null) {
-                    $metadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
-                    $markerAdapter = (string) ($metadata['adapter'] ?? '');
+                    $meta = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+                    $markerAdapter = (string) ($meta['adapter'] ?? '');
 
                     if ($markerAdapter === '' || $markerAdapter === $storageAdapter) {
                         return $this->_remember($identity, true);
@@ -199,6 +185,25 @@ final class DerivativeExistenceService extends Component
         }
 
         return $this->_assetIndexMaps[$assetId];
+    }
+
+    /**
+     * Whether stored adapter/path metadata no longer matches the requested location.
+     *
+     * @param array<string, mixed> $fields Marker metadata or asset-index entry.
+     */
+    private function _locationMismatch(
+        array $fields,
+        string $expectedAdapter,
+        string $expectedPath,
+        string $adapterKey,
+        string $pathKey,
+    ): bool {
+        $adapter = (string) ($fields[$adapterKey] ?? '');
+        $path = (string) ($fields[$pathKey] ?? '');
+
+        return ($adapter !== '' && $adapter !== $expectedAdapter)
+            || ($path !== '' && $path !== $expectedPath);
     }
 
     /**

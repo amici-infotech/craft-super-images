@@ -1,5 +1,7 @@
 # Encoders & optimizers
 
+**Rule of thumb:** use the **native encoder** + **optimizer binaries** in config. Only write a custom encoder when you need to replace the encode step itself — see [`examples/encoders/`](../examples/encoders/ExampleWebpEncoder.php).
+
 ## Mental model
 
 ```text

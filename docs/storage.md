@@ -114,7 +114,11 @@ must be regenerated (or copied) — they are not automatically mirrored to R2.
 ],
 ```
 
-Remote storage does **not** keep a permanent local image mirror. Tiny existence markers live under:
+Remote storage does **not** keep a permanent local image mirror.
+
+## Existence markers
+
+Tiny JSON files track which remote objects exist so cache hits avoid slow network HEAD requests (~300 ms each on R2/S3):
 
 ```text
 @storage/super-images/markers
@@ -122,7 +126,9 @@ Remote storage does **not** keep a permanent local image mirror. Tiny existence 
 
 Never put markers under webroot. On each Twig/CLI hit, the plugin checks markers and the
 per-asset index **before** calling the remote storage API — avoid disabling markers on
-Spaces/S3 or every cache hit pays for a network HEAD request (~500–800 ms each).
+Spaces/S3/R2 or every cache hit pays for a network round-trip.
+
+After switching storage adapters, run `php craft super-images/cleanup --all=1` to clear markers and the asset index, then regenerate.
 
 ```php
 'storage' => [

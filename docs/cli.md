@@ -1,8 +1,17 @@
 # CLI & queue
 
-All CLI generation calls the same `GenerationService` as runtime and Playground, so
-what you generate from the console is byte-for-byte what Twig/runtime would produce
-for the same asset/profile/variant/format.
+**Cheat sheet** — full reference below.
+
+| Task | Command |
+|---|---|
+| Is everything wired up? | `php craft super-images/doctor` |
+| What config is active? | `php craft super-images/status` |
+| Preview transforms for one asset | `php craft super-images/generate --asset=123 --dry-run=1` |
+| Generate one asset now | `php craft super-images/generate --asset=123` |
+| Queue a whole volume | `php craft super-images/generate --volume=images --queue=1` |
+| After switching storage / stale URLs | `php craft super-images/cleanup --all=1` then regenerate |
+
+All generation uses the same `GenerationService` as runtime Twig and the Control Panel.
 
 Every command accepts Yii's built-in `--color=0|1`, `--interactive=0|1`, and `--help`/`-h`
 options in addition to what's documented below. Boolean/int flags can be passed as

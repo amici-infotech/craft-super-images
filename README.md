@@ -40,10 +40,14 @@ Open `/super-images` for live Twig examples (CDN-first — no Asset ID required)
 
 ## Documentation
 
-Start here: **[docs/README.md](docs/README.md)**
+**New to Super Images?** [docs/getting-started.md](docs/getting-started.md)
+
+Full index: [docs/README.md](docs/README.md)
 
 | Topic | Doc |
 |---|---|
+| Getting started | [docs/getting-started.md](docs/getting-started.md) |
+| Extend (storage, optimizers, ops) | [docs/extension-api.md](docs/extension-api.md) + [examples/](examples/README.md) |
 | Interactive demo | [docs/demo.md](docs/demo.md) |
 | Configuration | [docs/configuration.md](docs/configuration.md) |
 | Twig API & operations | [docs/twig.md](docs/twig.md) |
