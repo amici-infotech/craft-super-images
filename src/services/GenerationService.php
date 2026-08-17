@@ -324,15 +324,20 @@ class GenerationService extends Component
 
             if (!$force) {
                 $adapter = $plugin->getStorageManager()->select($definition->storageAdapter);
-                $objectExists = $adapter->exists($storagePath);
+                $exists = $plugin->getDerivativeExistence()->exists(
+                    $definition->storageAdapter,
+                    $storagePath,
+                    $identity,
+                    $request->assetId,
+                );
                 $markerExists = $plugin->getExistenceMarkers()->exists($identity);
 
-                if ($objectExists || $markerExists) {
+                if ($exists) {
                     [$width, $height, $size] = $this->resolveExistingDerivativeMeta(
                         $adapter,
                         $storagePath,
                         $identity,
-                        $objectExists,
+                        $exists && !$adapter->capabilities()->remote,
                         $markerExists,
                     );
 

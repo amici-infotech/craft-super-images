@@ -223,9 +223,21 @@ class CleanupController extends Controller
 
         if ($candidates === 0 && ($result['errors'] ?? 0) === 0) {
             $fresh = (int) ($result['skippedFresh'] ?? 0);
+            $markersCleared = (int) ($result['markersCleared'] ?? 0);
+            $indexesCleared = (int) ($result['indexesCleared'] ?? 0);
+            $trackingNote = ($markersCleared > 0 || $indexesCleared > 0)
+                ? sprintf(
+                    ' — cleared %d marker%s, %d index file%s',
+                    $markersCleared,
+                    $markersCleared === 1 ? '' : 's',
+                    $indexesCleared,
+                    $indexesCleared === 1 ? '' : 's',
+                )
+                : '';
             $this->stdout(sprintf(
-                "\nNothing to clean%s (%.1fs).\n",
+                "\nNothing to clean%s%s (%.1fs).\n",
                 $fresh > 0 ? sprintf(' — %d file%s still within retention', $fresh, $fresh === 1 ? '' : 's') : '',
+                $trackingNote,
                 $elapsed,
             ), Console::FG_CYAN);
 
@@ -246,6 +258,14 @@ class CleanupController extends Controller
 
         if (isset($result['assetsOrphaned'])) {
             $parts[] = sprintf('assets=%d', (int) $result['assetsOrphaned']);
+        }
+
+        if (($result['markersCleared'] ?? 0) > 0) {
+            $parts[] = sprintf('markers=%d', (int) $result['markersCleared']);
+        }
+
+        if (($result['indexesCleared'] ?? 0) > 0) {
+            $parts[] = sprintf('indexes=%d', (int) $result['indexesCleared']);
         }
 
         $parts[] = sprintf('failed=%d', (int) ($result['errors'] ?? 0));

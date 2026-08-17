@@ -149,7 +149,14 @@ php craft super-images/doctor --json=1 || exit 1
 
 ## Cleanup
 
-Deletes derivative files under the default **local** storage adapter.
+Deletes derivative files under the default storage adapter. For **local** storage,
+files are found by scanning the adapter root. For **remote** adapters (S3, Spaces,
+R2, etc.), cleanup walks the per-asset index at `@storage/super-images/asset-index`
+and deletes each indexed object from its adapter — buckets are not listed directly.
+
+With `--all=1`, cleanup also wipes **existence markers** (`@storage/super-images/markers`)
+and the asset index so the next generate pass treats every transform as missing
+(useful after switching storage backends).
 
 **Runs for real by default.** Pass `--dry-run=1` to preview without deleting.
 
@@ -170,7 +177,7 @@ php craft super-images/cleanup --dry-run=1
 # Temporary retention for this run only (e.g. older than 7 days).
 php craft super-images/cleanup --retention-days=7
 
-# Nuclear: delete every derivative now, ignore retention, clear the asset index.
+# Nuclear: delete every derivative now, ignore retention, clear index + markers.
 php craft super-images/cleanup --all=1
 
 # One asset’s indexed derivatives.
@@ -185,7 +192,7 @@ php craft super-images/cleanup --orphaned=1
 | `--dry-run` | `-d` | bool | `false` | List matches without deleting. |
 | `--asset` | `-a` | int\|null | `null` | Purge all indexed derivatives for one Craft asset ID. |
 | `--orphaned` | | bool | `false` | Purge derivatives for indexed assets that no longer exist in Craft. Subject to retention. |
-| `--all` | | bool | `false` | Delete every file under local storage immediately (no retention check) and clear the asset index. |
+| `--all` | | bool | `false` | Delete every derivative immediately (no retention check). Clears the asset index and existence markers. Local: scans adapter root. Remote: uses asset index. |
 | `--retention-days` | | int\|null | `null` | Temporary override of `cleanup.generatedRetentionDays` for aged / orphaned modes. Ignored when `--all=1`. |
 
 Mode precedence: `--asset` › `--orphaned` › `--all` › aged (default).
@@ -199,7 +206,7 @@ Cleaning aged transforms (retention: 30 days)…
   [2/18] [deleted] 417627…/101/hero-md.webp
   ...
 
-Summary: deleted=18 kept=412 failed=0 (1.2s)
+Summary: deleted=18 kept=412 failed=0 markers=42 indexes=3 (1.2s)
 ```
 
 Non-zero `failed` sets the exit code to `ExitCode::UNSPECIFIED_ERROR`, so cron

@@ -20,6 +20,7 @@ use amici\SuperImages\services\BinaryResolver;
 use amici\SuperImages\services\CleanupService;
 use amici\SuperImages\services\ConfigurationResolver;
 use amici\SuperImages\services\DeliveryUrlService;
+use amici\SuperImages\services\DerivativeExistenceService;
 use amici\SuperImages\services\DiagnosticsService;
 use amici\SuperImages\services\GenerationIdentityService;
 use amici\SuperImages\services\GenerationLockService;
@@ -64,6 +65,7 @@ use Craft;
  * @property-read OperationPipeline $operationPipeline
  * @property-read TemporaryFileManager $temporaryFiles
  * @property-read ProcessRunner $processRunner
+ * @property-read DerivativeExistenceService $derivativeExistence
  * @property-read ExistenceMarkerStore $existenceMarkers
  */
 trait PluginTrait
@@ -128,6 +130,7 @@ trait PluginTrait
             'temporaryFiles' => TemporaryFileManager::class,
             'processRunner' => ProcessRunner::class,
             'existenceMarkers' => ExistenceMarkerStore::class,
+            'derivativeExistence' => DerivativeExistenceService::class,
         ]);
     }
 
@@ -395,6 +398,16 @@ trait PluginTrait
     public function getExistenceMarkers(): ExistenceMarkerStore
     {
         return $this->get('existenceMarkers');
+    }
+
+    /**
+     * Returns the derivative existence helper (markers / index before remote HEAD).
+     *
+     * @return DerivativeExistenceService
+     */
+    public function getDerivativeExistence(): DerivativeExistenceService
+    {
+        return $this->get('derivativeExistence');
     }
 
     /**

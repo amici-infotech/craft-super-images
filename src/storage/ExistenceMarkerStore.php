@@ -135,6 +135,47 @@ class ExistenceMarkerStore extends Component
     }
 
     /**
+     * Deletes every marker file under the configured markers root.
+     *
+     * Used after a full remote/local purge so cache-hit lookups do not skip
+     * regeneration against a new storage adapter.
+     *
+     * @return int Number of marker files removed.
+     */
+    public function clearAll(): int
+    {
+        $this->boot();
+        $root = (string) $this->_rootPath;
+
+        if (!is_dir($root)) {
+            return 0;
+        }
+
+        $deleted = 0;
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+
+        /** @var \SplFileInfo $node */
+        foreach ($iterator as $node) {
+            if ($node->isFile() && str_ends_with($node->getFilename(), '.marker')) {
+                if (@unlink($node->getPathname())) {
+                    $deleted++;
+                }
+
+                continue;
+            }
+
+            if ($node->isDir()) {
+                @rmdir($node->getPathname());
+            }
+        }
+
+        return $deleted;
+    }
+
+    /**
      * Lazily loads marker root path and enabled flag from plugin settings.
      *
      * @return void

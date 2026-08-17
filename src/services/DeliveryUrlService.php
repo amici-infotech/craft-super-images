@@ -139,7 +139,12 @@ final class DeliveryUrlService extends Component
         bool $runtimeEnabled,
     ): string {
         $plugin = Plugin::getInstance();
-        $exists = $this->derivativeExists($storageAdapter, $storagePath, $identity);
+        $exists = $this->derivativeExists(
+            $storageAdapter,
+            $storagePath,
+            $identity,
+            $request->assetId,
+        );
 
         if ($exists) {
             return $storageUrl;
@@ -166,13 +171,14 @@ final class DeliveryUrlService extends Component
      *
      * @return bool True when the object or existence marker is present.
      */
-    private function derivativeExists(string $storageAdapter, string $storagePath, string $identity): bool
+    private function derivativeExists(string $storageAdapter, string $storagePath, string $identity, ?int $assetId = null): bool
     {
-        $plugin = Plugin::getInstance();
-        $adapter = $plugin->getStorageManager()->select($storageAdapter);
-
-        return $adapter->exists($storagePath)
-            || $plugin->getExistenceMarkers()->exists($identity);
+        return Plugin::getInstance()->getDerivativeExistence()->exists(
+            $storageAdapter,
+            $storagePath,
+            $identity,
+            $assetId,
+        );
     }
 
     /**
@@ -194,6 +200,7 @@ final class DeliveryUrlService extends Component
             $planned['definition']->storageAdapter,
             $planned['storagePath'],
             $identity,
+            $request->assetId,
         )) {
             return $planned['storageUrl'];
         }
@@ -204,6 +211,7 @@ final class DeliveryUrlService extends Component
                 $planned['definition']->storageAdapter,
                 $planned['storagePath'],
                 $identity,
+                $request->assetId,
             )) {
                 return $planned['storageUrl'];
             }
@@ -283,15 +291,24 @@ final class DeliveryUrlService extends Component
         $identity = $planned['identity'];
         $storageUrl = $planned['storageUrl'];
         $storagePath = $planned['storagePath'];
-        $adapter = $plugin->getStorageManager()->select($planned['definition']->storageAdapter);
 
-        if ($adapter->exists($storagePath) || $plugin->getExistenceMarkers()->exists($identity)) {
+        if ($this->derivativeExists(
+            $planned['definition']->storageAdapter,
+            $storagePath,
+            $identity,
+            $thumbRequest->assetId,
+        )) {
             return $storageUrl;
         }
 
         if (!$locks->acquire($identity)) {
             $locks->waitAndCheck($identity);
-            if ($adapter->exists($storagePath) || $plugin->getExistenceMarkers()->exists($identity)) {
+            if ($this->derivativeExists(
+                $planned['definition']->storageAdapter,
+                $storagePath,
+                $identity,
+                $thumbRequest->assetId,
+            )) {
                 return $storageUrl;
             }
             if (!$locks->acquire($identity)) {

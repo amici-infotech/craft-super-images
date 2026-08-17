@@ -74,6 +74,7 @@ class StorageManager extends Component
         $this->_types['s3'] = $s3Factory;
         // DigitalOcean Spaces and other S3-compatible providers share the same adapter.
         $this->_types['spaces'] = $s3Factory;
+        $this->_types['r2'] = $s3Factory;
 
         $adapters = $storageConfig['adapters'] ?? [];
 

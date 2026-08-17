@@ -105,6 +105,7 @@ final class S3CompatibleStorageAdapter implements StorageAdapterInterface
             'Body' => $contents,
             'ACL' => $options->public ? 'public-read' : 'private',
             'ContentType' => $options->contentType,
+            'CacheControl' => 'public, max-age=31536000, immutable',
             'Metadata' => $options->metadata,
         ]);
 
@@ -141,6 +142,7 @@ final class S3CompatibleStorageAdapter implements StorageAdapterInterface
             'SourceFile' => $localFile,
             'ACL' => $options->public ? 'public-read' : 'private',
             'ContentType' => $options->contentType,
+            'CacheControl' => 'public, max-age=31536000, immutable',
             'Metadata' => $options->metadata,
         ]);
 

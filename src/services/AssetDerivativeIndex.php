@@ -128,6 +128,49 @@ final class AssetDerivativeIndex extends Component
     }
 
     /**
+     * Removes one derivative entry from an asset index without deleting the whole file.
+     *
+     * @param int $assetId Craft asset element ID.
+     * @param string $identity Stable derivative identity hash.
+     *
+     * @return void
+     */
+    public function forget(int $assetId, string $identity): void
+    {
+        if ($identity === '') {
+            return;
+        }
+
+        $payload = $this->read($assetId);
+        $derivatives = $payload['derivatives'] ?? [];
+        $filtered = [];
+
+        foreach ($derivatives as $entry) {
+            if (!is_array($entry) || (string) ($entry['identity'] ?? '') === $identity) {
+                continue;
+            }
+
+            $filtered[] = $entry;
+        }
+
+        if ($filtered === $derivatives) {
+            return;
+        }
+
+        if ($filtered === []) {
+            $this->clear($assetId);
+
+            return;
+        }
+
+        $this->write($assetId, [
+            'assetId' => $assetId,
+            'updatedAt' => time(),
+            'derivatives' => $filtered,
+        ]);
+    }
+
+    /**
      * Removes the index file for an asset.
      *
      * @param int $assetId Craft asset element ID.

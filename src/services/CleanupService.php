@@ -265,7 +265,6 @@ class CleanupService extends Component
         );
         $retentionDays = max(0, $retentionDays);
         $cutoff = $ignoreRetention ? null : time() - ($retentionDays * 86400);
-        $allowRemoteScan = (bool) ($settings->cleanup['allowRemoteScan'] ?? false);
 
         $defaultName = (string) ($settings->storage['default'] ?? 'local');
         $adapterConfig = $settings->storage['adapters'][$defaultName] ?? null;
@@ -292,14 +291,15 @@ class CleanupService extends Component
             return $result;
         }
 
-        $type = (string) ($adapterConfig['type'] ?? 'local');
+        $type = strtolower((string) ($adapterConfig['type'] ?? 'local'));
         if ($type !== 'local') {
-            $result['skipped'] = true;
-            $result['reason'] = $allowRemoteScan
-                ? 'Remote storage listing is not implemented; storage sweep only supports local adapters.'
-                : 'Remote storage scan skipped (cleanup.allowRemoteScan is false). Storage sweep only runs on local adapters.';
-
-            return $result;
+            return $this->purgeIndexedDerivatives(
+                $dryRun,
+                $retentionDays,
+                $ignoreRetention,
+                $previewOnly,
+                $onItem,
+            );
         }
 
         $root = PathGuard::canonicalize(
@@ -378,12 +378,174 @@ class CleanupService extends Component
         if (!$dryRun) {
             $this->pruneEmptyDirectories($scanRoot);
 
-            if ($ignoreRetention && !$previewOnly && $result['errors'] === 0) {
-                $plugin->getAssetDerivativeIndex()->clearAll();
+            if ($ignoreRetention && !$previewOnly) {
+                $this->clearLocalTrackingStores($result);
             }
         }
 
         return $result;
+    }
+
+    /**
+     * Purge derivatives listed in the per-asset index (remote storage default).
+     *
+     * Remote buckets are not listed directly; cleanup walks `@storage/super-images/asset-index`
+     * and deletes each indexed object from its adapter. With `--all=1`, also clears every
+     * existence marker so the next generate pass uploads fresh files to the current adapter.
+     *
+     * @param bool $dryRun When true, report candidates without deleting files.
+     * @param int|null $retentionDays Override retention; defaults to cleanup.generatedRetentionDays.
+     * @param bool $ignoreRetention When true, purge every indexed derivative regardless of age.
+     * @param bool $previewOnly When true, only consider entries whose path starts with `preview/`.
+     * @param null|callable(string $path, string $action, int $index, int $total): void $onItem Progress callback.
+     *
+     * @return array<string, mixed> Cleanup report.
+     */
+    public function purgeIndexedDerivatives(
+        bool $dryRun = false,
+        ?int $retentionDays = null,
+        bool $ignoreRetention = false,
+        bool $previewOnly = false,
+        ?callable $onItem = null,
+    ): array {
+        $plugin = Plugin::getInstance();
+        $settings = $plugin->getSettings();
+        $retentionDays ??= (int) (
+            $settings->cleanup['generatedRetentionDays']
+            ?? $settings->cleanup['obsoleteRetentionDays']
+            ?? 365
+        );
+        $retentionDays = max(0, $retentionDays);
+        $cutoff = $ignoreRetention ? null : time() - ($retentionDays * 86400);
+        $defaultName = (string) ($settings->storage['default'] ?? 'local');
+
+        $index = $plugin->getAssetDerivativeIndex();
+        $assetIds = $index->allIndexedAssetIds();
+
+        $result = [
+            'dryRun' => $dryRun,
+            'retentionDays' => $ignoreRetention ? null : $retentionDays,
+            'cutoff' => $cutoff,
+            'ignoreRetention' => $ignoreRetention,
+            'previewOnly' => $previewOnly,
+            'adapter' => $defaultName,
+            'remoteViaIndex' => true,
+            'indexedAssets' => count($assetIds),
+            'candidates' => 0,
+            'deleted' => 0,
+            'skippedFresh' => 0,
+            'errors' => 0,
+            'markersCleared' => 0,
+            'indexesCleared' => 0,
+        ];
+
+        if ($assetIds === []) {
+            if ($ignoreRetention && !$dryRun && !$previewOnly) {
+                $this->clearLocalTrackingStores($result);
+            }
+
+            return $result;
+        }
+
+        /** @var array<int, list<array{identity: string, storagePath: string, adapter: string}>> $pending */
+        $pending = [];
+
+        foreach ($assetIds as $assetId) {
+            if ($cutoff !== null) {
+                $updatedAt = $index->updatedAt($assetId);
+                if ($updatedAt !== null && $updatedAt >= $cutoff) {
+                    $result['skippedFresh']++;
+
+                    continue;
+                }
+            }
+
+            $entries = $index->entries($assetId);
+            if ($previewOnly) {
+                $entries = array_values(array_filter(
+                    $entries,
+                    static fn(array $entry): bool => str_starts_with($entry['storagePath'], 'preview/'),
+                ));
+            }
+
+            if ($entries === []) {
+                continue;
+            }
+
+            $pending[$assetId] = $entries;
+            $result['candidates'] += count($entries);
+        }
+
+        $totalUnits = $result['candidates'];
+        $unitIndex = 0;
+
+        foreach ($pending as $assetId => $entries) {
+            foreach ($entries as $entry) {
+                $unitIndex++;
+                $identity = $entry['identity'];
+                $storagePath = $entry['storagePath'];
+                $adapterName = $entry['adapter'] !== ''
+                    ? $entry['adapter']
+                    : $defaultName;
+                $label = sprintf('asset#%d %s', $assetId, $storagePath);
+
+                if ($dryRun) {
+                    $this->notify($onItem, $label, 'dry-run', $unitIndex, $totalUnits);
+
+                    continue;
+                }
+
+                try {
+                    $adapter = $plugin->getStorageManager()->select($adapterName);
+                    if ($adapter->exists($storagePath)) {
+                        $adapter->delete($storagePath);
+                    }
+                    $plugin->getExistenceMarkers()->delete($identity);
+                    $result['deleted']++;
+                    $this->notify($onItem, $label, 'deleted', $unitIndex, $totalUnits);
+                } catch (\Throwable $exception) {
+                    $result['errors']++;
+                    $this->notify($onItem, $label, 'failed', $unitIndex, $totalUnits);
+                    Craft::warning(
+                        sprintf(
+                            'Failed to purge indexed derivative "%s" for asset %d: %s',
+                            $identity,
+                            $assetId,
+                            $exception->getMessage(),
+                        ),
+                        __METHOD__,
+                    );
+                }
+            }
+
+            if (!$dryRun) {
+                $index->clear((int) $assetId);
+                $result['indexesCleared']++;
+            }
+        }
+
+        if ($ignoreRetention && !$dryRun && !$previewOnly) {
+            $this->clearLocalTrackingStores($result);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Wipes local existence markers and any remaining asset-index files.
+     *
+     * @param array<string, mixed> $result Cleanup report (mutated with counts).
+     *
+     * @return void
+     */
+    private function clearLocalTrackingStores(array &$result): void
+    {
+        $plugin = Plugin::getInstance();
+        $result['markersCleared'] = $plugin->getExistenceMarkers()->clearAll();
+        $index = $plugin->getAssetDerivativeIndex();
+        $remaining = $index->allIndexedAssetIds();
+        $index->clearAll();
+        $result['indexesCleared'] = max((int) ($result['indexesCleared'] ?? 0), count($remaining));
     }
 
     /**

@@ -52,12 +52,15 @@ final class RuntimeGenerationService extends Component
 
         $identity = $planned['identity'];
         $locks = $plugin->getGenerationLocks();
+        $existence = $plugin->getDerivativeExistence();
+        $storageAdapter = $planned['definition']->storageAdapter;
+        $storagePath = $planned['storagePath'];
+        $assetId = $request->assetId;
 
         if (!$locks->acquire($identity)) {
             $locks->waitAndCheck($identity);
 
-            $adapter = $plugin->getStorageManager()->select($planned['definition']->storageAdapter);
-            if ($adapter->exists($planned['storagePath']) || $plugin->getExistenceMarkers()->exists($identity)) {
+            if ($existence->exists($storageAdapter, $storagePath, $identity, $assetId)) {
                 return $planned['storageUrl'];
             }
 
@@ -67,11 +70,7 @@ final class RuntimeGenerationService extends Component
         }
 
         try {
-            $adapter = $plugin->getStorageManager()->select($planned['definition']->storageAdapter);
-            if (
-                $adapter->exists($planned['storagePath'])
-                || $plugin->getExistenceMarkers()->exists($identity)
-            ) {
+            if ($existence->exists($storageAdapter, $storagePath, $identity, $assetId)) {
                 return $planned['storageUrl'];
             }
 

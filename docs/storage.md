@@ -71,12 +71,35 @@ Working URL shape:
 https://{bucket}.{region}.cdn.digitaloceanspaces.com/{prefix}{folderHash}/{transformHash}/{assetId}/{file}.{ext}
 ```
 
-A custom domain (e.g. `assets.example.org`) only works after you link it under
-**Spaces → your bucket → Settings → CDN → Custom subdomain**. If the same domain
-is also used for Cloudflare R2 or another origin, Spaces objects will 404 there
-even though they exist in the bucket.
+A custom domain (e.g. `assets.example.org`) only works when that hostname is wired
+to **the same bucket** you upload into. On this project, `assets.maozisrael.org`
+serves **Cloudflare R2** (`images/`, Craft `transforms/…`), while the Spaces
+adapter writes to **DigitalOcean** — so Spaces files 404 on that domain even with
+`public-read` ACL. Use the R2 adapter below when you need `assets.maozisrael.org` URLs.
 
-### Generic S3 / R2
+### Cloudflare R2 (custom domain)
+
+Use type `r2` when your public CDN hostname is already backed by R2 (same as Craft
+transforms and `/images/` on this site):
+
+```php
+'r2' => [
+    'type' => 'r2',
+    'keyId' => App::env('CF_R2_ACCESS_KEY_ID'),
+    'secret' => App::env('CF_R2_SECRET_ACCESS_KEY'),
+    'bucket' => App::env('CF_R2_BUCKET'),
+    'region' => 'auto',
+    'endpoint' => 'https://' . App::env('CF_ACCOUNT_ID') . '.r2.cloudflarestorage.com',
+    'prefix' => 'transforms/super-images/',
+    'baseUrl' => App::env('CF_R2_BASE_URL'), // https://assets.maozisrael.org
+    'usePathStyle' => true,
+],
+```
+
+Set `SUPER_IMAGES_STORAGE=r2` in `.env`. Existing derivatives uploaded to Spaces
+must be regenerated (or copied) — they are not automatically mirrored to R2.
+
+### Generic S3
 
 ```php
 's3' => [
@@ -97,7 +120,9 @@ Remote storage does **not** keep a permanent local image mirror. Tiny existence 
 @storage/super-images/markers
 ```
 
-Never put markers under webroot.
+Never put markers under webroot. On each Twig/CLI hit, the plugin checks markers and the
+per-asset index **before** calling the remote storage API — avoid disabling markers on
+Spaces/S3 or every cache hit pays for a network HEAD request (~500–800 ms each).
 
 ```php
 'storage' => [
