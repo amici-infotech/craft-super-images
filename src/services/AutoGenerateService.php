@@ -24,6 +24,40 @@ use yii\base\Component;
 final class AutoGenerateService extends Component
 {
     /**
+     * File/focal-point change flags captured during BEFORE_SAVE (dirty attrs are cleared by AFTER_SAVE).
+     *
+     * @var array<int, array{file: bool, focal: bool}>
+     */
+    private static array $pendingSaveFlags = [];
+
+    /**
+     * Capture file/focal-point change flags before the asset is saved.
+     *
+     * @param Asset $asset The asset about to be saved.
+     *
+     * @return void
+     */
+    public function registerSaveFlags(Asset $asset): void
+    {
+        if (!$asset->id) {
+            return;
+        }
+
+        $dirty = $asset->getDirtyAttributes();
+        $fileChanged = $this->detectPendingFileChange($asset, $dirty);
+        $focalChanged = in_array('focalPoint', $dirty, true);
+
+        if (!$fileChanged && !$focalChanged) {
+            return;
+        }
+
+        self::$pendingSaveFlags[(int) $asset->id] = [
+            'file' => $fileChanged,
+            'focal' => $focalChanged,
+        ];
+    }
+
+    /**
      * Handle an asset after-save event and enqueue generation when appropriate.
      *
      * @param Asset $asset The saved asset element.
@@ -33,15 +67,19 @@ final class AutoGenerateService extends Component
      */
     public function handleAfterSave(Asset $asset, bool $isNew): void
     {
-        if (!$this->shouldEnqueue($asset, $isNew)) {
-            return;
-        }
+        try {
+            if (!$this->shouldEnqueue($asset, $isNew)) {
+                return;
+            }
 
-        if (!$isNew && $this->assetFileChanged($asset)) {
-            $this->purgeOnReplaceIfEnabled($asset);
-        }
+            if (!$isNew && $this->assetFileChanged($asset)) {
+                $this->purgeOnReplaceIfEnabled($asset);
+            }
 
-        $this->enqueue($asset);
+            $this->enqueue($asset);
+        } finally {
+            $this->clearSaveFlags($asset);
+        }
     }
 
     /**
@@ -130,21 +168,25 @@ final class AutoGenerateService extends Component
     }
 
     /**
-     * Check whether Craft is updating, migrating, or has pending plugin updates.
+     * Check whether Craft is updating, migrating, or has pending Super Images migrations.
      *
      * @return bool True during import/maintenance windows when auto-generate should be suppressed.
      */
     private function isImportOrMaintenance(): bool
     {
-        if (Craft::$app->getIsUpdating()) {
+        if (Craft::$app->getIsInMaintenanceMode()) {
             return true;
         }
 
-        if (Craft::$app->getUpdates()->getIsCraftUpdatePending()) {
+        $updates = Craft::$app->getUpdates();
+
+        if ($updates->getIsCraftUpdatePending()) {
             return true;
         }
 
-        return Craft::$app->getUpdates()->getIsPluginUpdatePending('super-images');
+        $plugin = Plugin::getInstance();
+
+        return Craft::$app->getPlugins()->isPluginUpdatePending($plugin);
     }
 
     /**
@@ -156,6 +198,12 @@ final class AutoGenerateService extends Component
      */
     private function assetFileChanged(Asset $asset): bool
     {
+        $pending = $this->pendingSaveFlags($asset);
+
+        if ($pending !== null) {
+            return $pending['file'];
+        }
+
         $dirty = $asset->getDirtyAttributes();
 
         return in_array('filename', $dirty, true)
@@ -174,7 +222,69 @@ final class AutoGenerateService extends Component
      */
     private function focalPointChanged(Asset $asset): bool
     {
+        $pending = $this->pendingSaveFlags($asset);
+
+        if ($pending !== null) {
+            return $pending['focal'];
+        }
+
         return in_array('focalPoint', $asset->getDirtyAttributes(), true);
+    }
+
+    /**
+     * Detect whether the asset file will change on the pending save.
+     *
+     * @param Asset $asset The asset about to be saved.
+     * @param list<string> $dirty Dirty attribute names from before save.
+     *
+     * @return bool True when a new upload or replace will change the stored file.
+     */
+    private function detectPendingFileChange(Asset $asset, array $dirty): bool
+    {
+        if (
+            $asset->tempFilePath !== null
+            && in_array($asset->getScenario(), [Asset::SCENARIO_CREATE, Asset::SCENARIO_REPLACE], true)
+        ) {
+            return true;
+        }
+
+        return in_array('filename', $dirty, true)
+            || in_array('kind', $dirty, true)
+            || in_array('size', $dirty, true)
+            || in_array('width', $dirty, true)
+            || in_array('height', $dirty, true);
+    }
+
+    /**
+     * Return pending save flags for an asset, if any were captured.
+     *
+     * @param Asset $asset The saved asset element.
+     *
+     * @return array{file: bool, focal: bool}|null
+     */
+    private function pendingSaveFlags(Asset $asset): ?array
+    {
+        if (!$asset->id) {
+            return null;
+        }
+
+        return self::$pendingSaveFlags[(int) $asset->id] ?? null;
+    }
+
+    /**
+     * Clear pending save flags after an after-save handler finishes.
+     *
+     * @param Asset $asset The saved asset element.
+     *
+     * @return void
+     */
+    private function clearSaveFlags(Asset $asset): void
+    {
+        if (!$asset->id) {
+            return;
+        }
+
+        unset(self::$pendingSaveFlags[(int) $asset->id]);
     }
 
     /**

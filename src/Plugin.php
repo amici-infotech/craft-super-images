@@ -11,6 +11,8 @@
 namespace amici\SuperImages;
 
 use amici\SuperImages\base\PluginTrait;
+use amici\SuperImages\elements\actions\ClearDerivatives;
+use amici\SuperImages\elements\actions\QueueGeneration;
 use amici\SuperImages\models\Settings;
 use amici\SuperImages\services\StoragePathBuilder;
 use amici\SuperImages\variables\SuperImagesVariable;
@@ -19,7 +21,9 @@ use craft\base\Model;
 use craft\base\Plugin as CraftPlugin;
 use craft\console\Application as ConsoleApplication;
 use craft\elements\Asset;
+use craft\events\DefineMenuItemsEvent;
 use craft\events\ModelEvent;
+use craft\events\RegisterElementActionsEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\events\RegisterUserPermissionsEvent;
 use craft\helpers\UrlHelper;
@@ -90,6 +94,8 @@ class Plugin extends CraftPlugin
         $this->_registerDefaultRegistries();
         $this->_registerTwig();
         $this->_registerAssetEvents();
+        $this->_registerElementActions();
+        $this->_registerAssetActionMenuItems();
         $this->_registerCpRoutes();
         $this->_registerPermissions();
         $this->_registerLogTarget();
@@ -246,6 +252,20 @@ class Plugin extends CraftPlugin
     {
         Event::on(
             Asset::class,
+            Asset::EVENT_BEFORE_SAVE,
+            static function (ModelEvent $event): void {
+                $asset = $event->sender;
+
+                if (!$asset instanceof Asset) {
+                    return;
+                }
+
+                Plugin::getInstance()->getAutoGenerate()->registerSaveFlags($asset);
+            }
+        );
+
+        Event::on(
+            Asset::class,
             Asset::EVENT_AFTER_SAVE,
             static function (ModelEvent $event): void {
                 $asset = $event->sender;
@@ -254,7 +274,18 @@ class Plugin extends CraftPlugin
                     return;
                 }
 
-                Plugin::getInstance()->getAutoGenerate()->handleAfterSave($asset, $event->isNew);
+                try {
+                    Plugin::getInstance()->getAutoGenerate()->handleAfterSave($asset, $event->isNew);
+                } catch (\Throwable $exception) {
+                    Craft::error(
+                        sprintf(
+                            'Super Images auto-generate failed after saving asset %d: %s',
+                            (int) $asset->id,
+                            $exception->getMessage(),
+                        ),
+                        __METHOD__,
+                    );
+                }
             }
         );
 
@@ -275,7 +306,18 @@ class Plugin extends CraftPlugin
                     return;
                 }
 
-                Plugin::getInstance()->getCleanup()->purgeAssetDerivatives((int) $asset->id);
+                try {
+                    Plugin::getInstance()->getCleanup()->purgeAssetDerivatives((int) $asset->id);
+                } catch (\Throwable $exception) {
+                    Craft::error(
+                        sprintf(
+                            'Super Images cleanup failed before deleting asset %d: %s',
+                            (int) $asset->id,
+                            $exception->getMessage(),
+                        ),
+                        __METHOD__,
+                    );
+                }
             }
         );
     }
@@ -285,6 +327,80 @@ class Plugin extends CraftPlugin
      *
      * @return void
      */
+    /**
+     * Adds "Generate Transforms" and "Clear Cache" items to the asset detail action menu.
+     *
+     * @return void
+     */
+    private function _registerAssetActionMenuItems(): void
+    {
+        Event::on(
+            Asset::class,
+            Asset::EVENT_DEFINE_ACTION_MENU_ITEMS,
+            static function (DefineMenuItemsEvent $event): void {
+                $asset = $event->sender;
+
+                if (!$asset instanceof Asset || $asset->kind !== Asset::KIND_IMAGE) {
+                    return;
+                }
+
+                $plugin = Plugin::getInstance();
+
+                if (!$plugin->isEnabled()) {
+                    return;
+                }
+
+                if (!Craft::$app->getUser()->checkPermission('super-images:view')) {
+                    return;
+                }
+
+                $view = Craft::$app->getView();
+                $generateId = sprintf('si-generate-%s', mt_rand());
+                $clearId = sprintf('si-clear-%s', mt_rand());
+
+                $event->items[] = ['type' => 'hr'];
+
+                $event->items[] = [
+                    'id' => $generateId,
+                    'icon' => 'photos',
+                    'label' => Craft::t('super-images', 'Generate Transforms (Super Images)'),
+                ];
+
+                $event->items[] = [
+                    'id' => $clearId,
+                    'icon' => 'trash',
+                    'label' => Craft::t('super-images', 'Clear Cache (Super Images)'),
+                    'destructive' => true,
+                ];
+
+                $view->registerJsWithVars(
+                    fn($genId, $clearId, $assetId, $genAction, $clearAction) => <<<JS
+(() => {
+    const post = (action, assetId) => {
+        Craft.sendActionRequest('POST', action, {data: {assetId}})
+            .then(r => Craft.cp.displayNotice(r.data.message))
+            .catch(e => Craft.cp.displayError(e?.response?.data?.message || 'Request failed.'));
+    };
+    $('#' + $genId).on('activate', () => post($genAction, $assetId));
+    $('#' + $clearId).on('activate', () => {
+        if (confirm('Are you sure you want to clear Super Images cache for this asset?')) {
+            post($clearAction, $assetId);
+        }
+    });
+})();
+JS,
+                    [
+                        $view->namespaceInputId($generateId),
+                        $view->namespaceInputId($clearId),
+                        (int) $asset->id,
+                        'super-images/asset-actions/queue-generation',
+                        'super-images/asset-actions/clear-derivatives',
+                    ],
+                );
+            }
+        );
+    }
+
     private function _registerCpRoutes(): void
     {
         Event::on(
@@ -300,6 +416,33 @@ class Plugin extends CraftPlugin
                     'super-images/settings/save-naming' => 'super-images/settings/save-naming',
                     'super-images/encoders' => 'super-images/encoders/index',
                 ]);
+            }
+        );
+    }
+
+    /**
+     * Registers bulk asset actions in the Assets index gear menu.
+     *
+     * @return void
+     */
+    private function _registerElementActions(): void
+    {
+        Event::on(
+            Asset::class,
+            Asset::EVENT_REGISTER_ACTIONS,
+            static function (RegisterElementActionsEvent $event): void {
+                $plugin = Plugin::getInstance();
+
+                if (!$plugin->isEnabled()) {
+                    return;
+                }
+
+                if (!Craft::$app->getUser()->checkPermission('super-images:view')) {
+                    return;
+                }
+
+                $event->actions[] = QueueGeneration::class;
+                $event->actions[] = ClearDerivatives::class;
             }
         );
     }

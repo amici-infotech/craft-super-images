@@ -188,6 +188,8 @@ final class LocalStorageAdapter implements StorageAdapterInterface
         if (is_file($fullPath)) {
             @unlink($fullPath);
         }
+
+        $this->pruneEmptyAncestors(dirname($fullPath));
     }
 
     /**
@@ -245,6 +247,56 @@ final class LocalStorageAdapter implements StorageAdapterInterface
      *
      * @throws StorageException When the directory cannot be created.
      */
+    /**
+     * Removes empty ancestor directories up to (but never including) the storage root.
+     *
+     * @param string $directory Absolute path to start pruning from.
+     *
+     * @return void
+     */
+    private function pruneEmptyAncestors(string $directory): void
+    {
+        $root = rtrim($this->_rootPath, DIRECTORY_SEPARATOR);
+
+        while (
+            $directory !== $root
+            && str_starts_with($directory, $root . DIRECTORY_SEPARATOR)
+            && is_dir($directory)
+            && $this->isDirectoryEmpty($directory)
+        ) {
+            @rmdir($directory);
+            $directory = dirname($directory);
+        }
+    }
+
+    /**
+     * Checks whether a directory is empty (no files or subdirectories).
+     *
+     * @param string $directory Absolute path to check.
+     *
+     * @return bool True when directory has no entries besides . and ..
+     */
+    private function isDirectoryEmpty(string $directory): bool
+    {
+        $handle = @opendir($directory);
+
+        if ($handle === false) {
+            return false;
+        }
+
+        while (($entry = readdir($handle)) !== false) {
+            if ($entry !== '.' && $entry !== '..') {
+                closedir($handle);
+
+                return false;
+            }
+        }
+
+        closedir($handle);
+
+        return true;
+    }
+
     private function ensureDirectory(string $directory): void
     {
         if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
