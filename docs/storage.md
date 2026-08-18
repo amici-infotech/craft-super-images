@@ -55,13 +55,13 @@ URLs must include that prefix too (the adapter adds it automatically).
     'type' => 'spaces',
     'keyId' => App::env('SPACES_ACCESS_KEY_ID'),
     'secret' => App::env('SPACES_SECRET_ACCESS_KEY'),
-    'bucket' => App::env('SPACES_BUCKET'),       // e.g. paragonn-cdn8
+    'bucket' => App::env('SPACES_BUCKET'),       // e.g. my-cdn-bucket
     'region' => App::env('SPACES_REGION'),       // e.g. nyc3
     'endpoint' => App::env('SPACES_ENDPOINT'),     // https://nyc3.digitaloceanspaces.com
     'prefix' => 'transforms/super-images/',
     // Must match a host that serves THIS bucket (origin or DO CDN endpoint):
     'baseUrl' => App::env('SPACES_BASE_URL'),
-    // e.g. https://paragonn-cdn8.nyc3.cdn.digitaloceanspaces.com
+    // e.g. https://my-cdn-bucket.nyc3.cdn.digitaloceanspaces.com
 ],
 ```
 
@@ -72,15 +72,14 @@ https://{bucket}.{region}.cdn.digitaloceanspaces.com/{prefix}{folderHash}/{trans
 ```
 
 A custom domain (e.g. `assets.example.org`) only works when that hostname is wired
-to **the same bucket** you upload into. On this project, `assets.maozisrael.org`
-serves **Cloudflare R2** (`images/`, Craft `transforms/…`), while the Spaces
-adapter writes to **DigitalOcean** — so Spaces files 404 on that domain even with
-`public-read` ACL. Use the R2 adapter below when you need `assets.maozisrael.org` URLs.
+to **the same bucket** you upload into. If your public CDN hostname points at a
+different provider than your adapter (for example, R2 for the CDN but Spaces for
+uploads), files will 404 on that domain even with `public-read` ACL. Match the
+adapter type to the bucket that backs your `baseUrl`.
 
 ### Cloudflare R2 (custom domain)
 
-Use type `r2` when your public CDN hostname is already backed by R2 (same as Craft
-transforms and `/images/` on this site):
+Use type `r2` when your public CDN hostname is already backed by R2:
 
 ```php
 'r2' => [
@@ -91,13 +90,13 @@ transforms and `/images/` on this site):
     'region' => 'auto',
     'endpoint' => 'https://' . App::env('CF_ACCOUNT_ID') . '.r2.cloudflarestorage.com',
     'prefix' => 'transforms/super-images/',
-    'baseUrl' => App::env('CF_R2_BASE_URL'), // https://assets.maozisrael.org
+    'baseUrl' => App::env('CF_R2_BASE_URL'), // e.g. https://assets.example.org
     'usePathStyle' => true,
 ],
 ```
 
-Set `SUPER_IMAGES_STORAGE=r2` in `.env`. Existing derivatives uploaded to Spaces
-must be regenerated (or copied) — they are not automatically mirrored to R2.
+Set `SUPER_IMAGES_STORAGE=r2` in `.env`. When switching adapters, existing
+derivatives must be regenerated (or copied) — they are not automatically mirrored.
 
 ### Generic S3
 
@@ -169,7 +168,7 @@ The **default** layout now includes a settings-aware segment:
 Example:
 
 ```text
-41762720c56668e667b056cfce41e4c6/9e98de8791b4f917/184704/hero-md.webp
+a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/9e98de8791b4f917/12345/hero-md.webp
 ```
 
 Non-asset sources (local / remote) default to:

@@ -197,11 +197,11 @@ final class StoragePathBuilder extends Component
             profile: 'responsive',
             variant: 'md',
             namespace: null,
-            assetId: $forAsset ? 184704 : null,
+            assetId: $forAsset ? 12345 : null,
             basename: 'hero',
-            folderHash: '41762720c56668e667b056cfce41e4c6',
+            folderHash: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6',
             naming: $naming,
-            folderPath: 'marketing/heroes',
+            folderPath: 'images/banners',
             volumeHandle: 'images',
         );
     }
