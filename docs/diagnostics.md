@@ -49,13 +49,25 @@ A binary **not found on PATH** is **WARN**, not pass — even when the format st
 |---|---|
 | Any check `fail` | Needs attention |
 | Queue has failed jobs | Warnings |
-| Warnings only (unused drivers, dual tip, FPM `ffi.enable` off while `vips` CLI works, optional optimizers, …) | **Healthy** |
+| Warnings only (unused drivers, dual Imagick+Libvips tip, optional optimizers, …) | **Healthy** |
 
-**Fail when it matters:** preferred `driver => …` is unusable; Libvips is selected/preferred but FPM isolation cannot run (no `vips` binary and no PHP worker); no driver works at all.
+**Fail when it matters:** preferred `driver => …` is unusable; Libvips is selected/preferred but FFI is off or FPM isolation cannot run; no driver works at all.
 
-`driver => auto` showing **Libvips** on the dashboard is expected — that is the resolved selection, not a pinned preference.
+Under FPM, `auto` only selects Libvips when **both** FFI is enabled **and** isolation works (`vips` CLI or PHP worker). Otherwise it falls through to Imagick/GD — you should see **Imagick** (or GD) as the selected driver, not a Healthy badge on a broken Libvips.
 
-Missing optional optimizers do not block transforms; native driver encoders still produce output.
+To use Libvips on Ubuntu FPM:
+
+```bash
+# php.ini for FPM
+ffi.enable = true
+# optional PHP 8.3+
+zend.max_allowed_stack_size = -1
+
+sudo apt-get install -y libvips-tools   # provides /usr/bin/vips
+sudo systemctl restart php8.3-fpm       # your version
+```
+
+Then refresh Diagnostics — Libvips should pass and `auto` may select it again.
 
 ### Queue
 

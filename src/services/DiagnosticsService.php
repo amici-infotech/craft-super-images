@@ -768,7 +768,6 @@ class DiagnosticsService extends Component
     private function libvipsRuntimeChecks(?string $selectedDriver, string $preference): array
     {
         $libvipsInPlay = $preference === 'libvips' || $selectedDriver === 'libvips';
-        $hasVipsBinary = LibvipsCliBridge::resolveVipsBinary() !== null;
 
         $ffiLoaded = extension_loaded('ffi');
         $ffiEnable = strtolower((string) ini_get('ffi.enable'));
@@ -778,30 +777,20 @@ class DiagnosticsService extends Component
         $cliOk = $isolate ? LibvipsCliBridge::isCliAvailable() : true;
         $isolationOk = !$isolate || $cliOk;
 
-        // FPM ffi.enable can be off while isolation still works (vips CLI, or PHP
-        // worker started with -d ffi.enable=true). Only fail when Libvips is in
-        // play and isolation itself cannot run.
-        $ffiStatus = 'pass';
-        if (!$ffiOn) {
-            $ffiStatus = ($libvipsInPlay && !$isolationOk) ? 'fail' : 'warn';
-        }
-
+        // When Libvips is selected or pinned, missing FFI / isolation is a hard fail
+        // (matches isAvailable() so auto will not keep selecting a broken Libvips).
         $checks = [];
         $checks[] = $this->check(
             'ffi',
             self::GROUP_DRIVERS,
-            $ffiStatus,
+            $ffiOn ? 'pass' : ($libvipsInPlay ? 'fail' : 'warn'),
             'FFI (libvips)',
             $ffiLoaded
                 ? 'extension loaded · ffi.enable=' . ($ffiEnable !== '' ? $ffiEnable : 'off')
-                    . ($hasVipsBinary && !$ffiOn ? ' · vips CLI available' : '')
-                : 'FFI extension not loaded.'
-                    . ($hasVipsBinary ? ' · vips CLI available' : ''),
+                : 'FFI extension not loaded.',
             $ffiOn
-                ? 'Required for in-process php-vips (CLI SAPI). Keep zend.max_allowed_stack_size=-1 on PHP 8.3+.'
-                : ($isolationOk && $isolate
-                    ? 'FPM ffi.enable is off, but isolation can still run via vips CLI / PHP worker. Enable ffi.enable=true for in-process use.'
-                    : 'Set ffi.enable=true in the FPM php.ini (install php8.x-ffi if needed), then restart PHP-FPM. See docs/drivers.md.'),
+                ? 'Required for php-vips. Keep zend.max_allowed_stack_size=-1 on PHP 8.3+.'
+                : 'Set ffi.enable=true in the FPM php.ini (install php8.x-ffi if needed), then restart PHP-FPM. See docs/drivers.md.',
         );
 
         $checks[] = $this->check(

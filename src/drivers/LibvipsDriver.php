@@ -47,9 +47,8 @@ final class LibvipsDriver extends AbstractDriver
     /**
      * Checks whether libvips can actually process images in this SAPI.
      *
-     * Under FPM isolation the native `vips` binary alone is enough for common
-     * transforms. The PHP worker path additionally requires FFI enabled.
-     * In-process mode requires a successful native library probe.
+     * Under FPM, both isolation (vips CLI / PHP worker) and FFI must be ready —
+     * otherwise `auto` must not select Libvips while Diagnostics reports failure.
      *
      * @return bool True when this driver is safe to select for generation.
      */
@@ -64,9 +63,10 @@ final class LibvipsDriver extends AbstractDriver
         }
 
         if (LibvipsCliBridge::shouldIsolate()) {
-            // FPM must not use in-process FFI. Usable when the vips binary or the
-            // PHP worker responds (worker passes -d ffi.enable=true itself).
-            return self::$usable = LibvipsCliBridge::isCliAvailable();
+            // Isolation runs the work out-of-process, but FFI must still be enabled
+            // for this SAPI so the PHP worker / php-vips binding are real options.
+            // Without that, Diagnostics fails Libvips while select() would still pick it.
+            return self::$usable = $this->ffiReady() && LibvipsCliBridge::isCliAvailable();
         }
 
         return self::$usable = $this->probeNativeLibrary();
