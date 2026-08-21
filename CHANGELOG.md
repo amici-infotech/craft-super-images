@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `LibvipsCliBridge` + `bin/libvips-worker.php` for safe libvips under FPM
 - Isolated pipeline path in `GenerationService` (native encode under isolation; Imagick/GD fallback on native failure)
-- Docs: full [Drivers](./docs/drivers.md) Ubuntu (+ Herd) install guides and FAQs; expanded [Diagnostics](./docs/diagnostics.md), encoder tradeoffs, getting-started / CP cross-links
+- Docs: full [Drivers](https://github.com/amici-infotech/craft-super-images/blob/craft-5/docs/drivers.md) Ubuntu (+ Herd) install guides and FAQs; expanded [Diagnostics](https://github.com/amici-infotech/craft-super-images/blob/craft-5/docs/diagnostics.md), encoder tradeoffs, getting-started / CP cross-links
 - Diagnostics: precise “why unavailable” details + install suggestions; FFI check; Imagick + Libvips dual-driver check; fail when no driver is usable; warn when pinned `driver` is unusable
 - Example / project config comments for encoder `effort` / `method` / progressive tradeoffs
 - `.env` overrides documented for `SUPER_IMAGES_VIPS_BINARY` / `SUPER_IMAGES_PHP_BINARY` / `SUPER_IMAGES_VIPS_ISOLATE`
