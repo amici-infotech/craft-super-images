@@ -173,19 +173,56 @@
     height: 100%;
     object-fit: contain;
 }
-.si-play__card-stats {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    font-size: 12px;
-    color: #3f4d5a;
-    display: grid;
-    gap: 4px;
+.si-play__pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
 }
-.si-play__card-stats code {
-    display: block;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+.si-play__pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    padding: 2px 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.4;
+}
+.si-play__pill--dimensions {
+    border-color: rgba(46, 125, 50, 0.4);
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+.si-play__pill--size {
+    border-color: #d0d7de;
+    background: #f0f1f3;
+    color: #5c6870;
+}
+.si-play__pill--duration {
+    border-color: rgba(0, 121, 107, 0.35);
+    background: #e0f2f1;
+    color: #00695c;
+}
+.si-play__pill--cache {
+    border-color: rgba(178, 106, 0, 0.35);
+    background: #fff8e1;
+    color: #b26a00;
+}
+.si-play__open {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #0d6efd;
+    text-decoration: none;
+}
+.si-play__open:hover {
+    color: #0a58ca;
+    text-decoration: underline;
+}
+.si-play__open svg {
+    flex-shrink: 0;
 }
 .si-play__error {
     margin: 0;
@@ -378,15 +415,21 @@
                             <article class="si-play__card{% if not item.success %} is-error{% endif %}">
                                 <div class="si-play__card-head">
                                     <strong>{{ item.format }}</strong>
-                                    {% if item.success %}
-                                        <span class="si-play__card-meta">{{ item.width }}×{{ item.height }}</span>
-                                    {% else %}
+                                    {% if not item.success %}
                                         <span class="si-play__card-meta" style="color:#c62828;">{{ "Failed"|t('super-images') }}</span>
                                     {% endif %}
                                 </div>
 
                                 {% if item.success and item.url %}
-                                    <a class="si-play__thumb-wrap" href="{{ item.url }}" target="_blank" rel="noopener">
+                                    {% set sizeLabel = item.size >= 1048576
+                                        ? (item.size / 1048576)|number_format(1) ~ ' MB'
+                                        : (item.size >= 1024
+                                            ? (item.size / 1024)|number_format(1) ~ ' KB'
+                                            : item.size ~ ' B') %}
+                                    {% set durationLabel = item.durationMs >= 1000
+                                        ? (item.durationMs / 1000)|number_format(1) ~ ' s'
+                                        : item.durationMs|round ~ ' ms' %}
+                                    <a class="si-play__thumb-wrap" href="{{ item.url }}" target="_blank" rel="noopener" title="{{ 'Open in new tab'|t('super-images') }}">
                                         <img
                                             src="{{ item.url }}"
                                             alt="{{ variant }} {{ item.format }}"
@@ -395,14 +438,22 @@
                                             decoding="async"
                                         >
                                     </a>
-                                    <ul class="si-play__card-stats">
-                                        <li>{{ item.size|filesize }} · {{ item.mime }}</li>
-                                        <li>{{ item.durationMs|number_format(1) }} ms</li>
-                                        {% if item.percentSaved is not null %}
-                                            <li>{{ item.percentSaved }}% {{ "vs original"|t('super-images') }}</li>
+                                    <div class="si-play__pills">
+                                        <span class="si-play__pill si-play__pill--dimensions">{{ item.width }}×{{ item.height }}</span>
+                                        <span class="si-play__pill si-play__pill--size">{{ sizeLabel }}</span>
+                                        <span class="si-play__pill si-play__pill--duration">{{ durationLabel }}</span>
+                                        {% if item.diagnostics.skipped is defined and item.diagnostics.skipped %}
+                                            <span class="si-play__pill si-play__pill--cache">{{ "Cache hit"|t('super-images') }}</span>
                                         {% endif %}
-                                        <li class="light"><code>{{ item.storagePath }}</code></li>
-                                    </ul>
+                                    </div>
+                                    <a class="si-play__open" href="{{ item.url }}" target="_blank" rel="noopener">
+                                        {{ "Open in new tab"|t('super-images') }}
+                                        <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M14 3h7v7"></path>
+                                            <path d="M10 14L21 3"></path>
+                                            <path d="M21 14v7H3V3h7"></path>
+                                        </svg>
+                                    </a>
                                 {% else %}
                                     <p class="si-play__error">{{ item.error ?: "Generation failed."|t('super-images') }}</p>
                                 {% endif %}

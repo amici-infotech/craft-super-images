@@ -555,9 +555,11 @@
                         {% endfor %}
                     </tbody>
                 </table>
-                <p style="margin:12px 0 0;">
-                    <a href="{{ cpUrl('super-images/encoders') }}">{{ "View install hints →"|t('super-images') }}</a>
-                </p>
+                {% if showOptimizerInstallHints %}
+                    <p style="margin:12px 0 0;">
+                        <a href="{{ cpUrl('super-images/encoders') }}">{{ "View install hints →"|t('super-images') }}</a>
+                    </p>
+                {% endif %}
             </div>
         </section>
     </div>

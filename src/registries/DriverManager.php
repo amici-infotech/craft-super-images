@@ -14,6 +14,7 @@ use amici\SuperImages\drivers\ImagickDriver;
 use amici\SuperImages\drivers\LibvipsDriver;
 use amici\SuperImages\events\RegisterDriversEvent;
 use amici\SuperImages\exceptions\DriverUnavailableException;
+use Craft;
 use yii\base\Component;
 
 /**
@@ -94,23 +95,39 @@ class DriverManager extends Component
      */
     public function select(?string $preference = 'auto'): ImageDriverInterface
     {
-        if ($preference !== null && $preference !== '' && $preference !== 'auto') {
-            $driver = $this->_drivers[strtolower($preference)] ?? null;
+        $wanted = $preference === null || $preference === '' ? 'auto' : strtolower($preference);
+
+        if ($wanted !== 'auto') {
+            $driver = $this->_drivers[$wanted] ?? null;
             if ($driver !== null && $driver->isAvailable()) {
                 return $driver;
             }
 
-            throw new DriverUnavailableException(sprintf('Requested driver "%s" is unavailable.', $preference));
+            Craft::warning(
+                sprintf('Requested image driver "%s" is unavailable; falling back.', (string) $preference),
+                __METHOD__,
+            );
         }
 
         foreach ($this->_fallbackOrder as $name) {
             $driver = $this->_drivers[$name] ?? null;
             if ($driver !== null && $driver->isAvailable()) {
+                if ($wanted !== 'auto' && $name !== $wanted) {
+                    Craft::warning(
+                        sprintf('Using fallback image driver "%s" (requested "%s").', $name, (string) $preference),
+                        __METHOD__,
+                    );
+                }
+
                 return $driver;
             }
         }
 
-        throw new DriverUnavailableException('No image driver is available.');
+        throw new DriverUnavailableException(
+            $wanted === 'auto'
+                ? 'No image driver is available.'
+                : sprintf('Requested driver "%s" is unavailable and no fallback driver could be selected.', $preference)
+        );
     }
 
     /**

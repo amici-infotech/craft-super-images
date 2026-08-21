@@ -88,7 +88,7 @@ class DoctorController extends Controller
     private function renderHeader(): void
     {
         $this->stdout("\n");
-        $this->stdout('Super Images · Doctor', Console::BOLD);
+        $this->stdout('Super Images · Diagnostics', Console::BOLD);
         $this->stdout("\n");
         $this->stdout(str_repeat('═', 42) . "\n\n", Console::FG_GREY);
     }

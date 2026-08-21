@@ -27,19 +27,21 @@ final class UbuntuInstallHints
     {
         return match (strtolower($driver)) {
             'gd' => [
-                'package' => 'php-gd',
-                'command' => 'sudo apt-get install -y php-gd',
-                'notes' => 'Use the PHP-versioned package if needed (e.g. php8.3-gd), then restart PHP-FPM.',
+                'package' => 'php8.x-gd',
+                'command' => 'sudo apt-get install -y php8.3-gd && sudo systemctl restart php8.3-fpm',
+                'notes' => 'Replace 8.3 with your FPM PHP version. Confirm gd in web phpinfo() (CLI alone is not enough). See docs/drivers.md#gd.',
             ],
             'imagick' => [
-                'package' => 'php-imagick',
-                'command' => 'sudo apt-get install -y php-imagick',
-                'notes' => 'Use the PHP-versioned package if needed (e.g. php8.3-imagick), then restart PHP-FPM.',
+                'package' => 'php8.x-imagick',
+                'command' => 'sudo apt-get install -y php8.3-imagick && sudo systemctl restart php8.3-fpm',
+                'notes' => 'Replace 8.3 with your FPM PHP version. If MagickWand mismatches, reinstall php-imagick + imagemagick. See docs/drivers.md#imagick.',
             ],
             'libvips' => [
-                'package' => 'libvips42 / libvips-dev',
-                'command' => 'sudo apt-get install -y libvips42 libvips-dev && composer require jcupitt/vips',
-                'notes' => 'Install system libs first, then the PHP binding package.',
+                'package' => 'libvips42 / libvips-tools + jcupitt/vips + FFI',
+                'command' => 'sudo apt-get install -y libvips42 libvips-dev libvips-tools libffi-dev && composer require jcupitt/vips',
+                'notes' => '1) System libvips (+ vips CLI). 2) composer require jcupitt/vips. '
+                    . '3) ffi.enable=true and zend.max_allowed_stack_size=-1 (PHP 8.3+) in FPM php.ini, restart FPM. '
+                    . '4) Under FPM set SUPER_IMAGES_VIPS_BINARY if needed. See docs/drivers.md#libvips.',
             ],
             default => null,
         };

@@ -193,13 +193,16 @@
             <div class="si-dash__metric">
                 <span class="si-dash__metric-label">{{ "Storage"|t('super-images') }}</span>
                 <span class="si-dash__metric-value">{{ summary.storageDefault }}</span>
-                <span class="si-dash__metric-meta">{{ summary.profileCount }} {{ "profiles"|t('super-images') }}</span>
+                <span class="si-dash__metric-meta">
+                    {{ summary.profileCount }}
+                    {{ summary.profileCount == 1 ? "profile"|t('super-images') : "profiles"|t('super-images') }}
+                </span>
             </div>
         </section>
 
         <section class="si-dash__panels">
             <div class="si-dash__panel">
-                <h3>{{ "Doctor"|t('super-images') }}</h3>
+                <h3>{{ "System Health"|t('super-images') }}</h3>
                 <ul class="si-dash__counts">
                     <li>
                         <strong style="color:#2e7d32;">{{ summary.doctor.pass }}</strong>

@@ -15,7 +15,10 @@ use amici\SuperImages\models\DriverCapabilities;
 use amici\SuperImages\models\EncodeOptions;
 use amici\SuperImages\models\EncodedImage;
 use amici\SuperImages\models\ImageHandle;
+use amici\SuperImages\models\OperationDefinition;
 use amici\SuperImages\models\SourceImage;
+use amici\SuperImages\support\LibvipsCliBridge;
+use Jcupitt\Vips\Config as VipsConfig;
 use Jcupitt\Vips\Image;
 
 /**
@@ -27,6 +30,11 @@ use Jcupitt\Vips\Image;
 final class LibvipsDriver extends AbstractDriver
 {
     /**
+     * Cached native-library probe so auto-fallback does not retry FFI every call.
+     */
+    private static ?bool $usable = null;
+
+    /**
      * Returns the driver identifier used in configuration and logging.
      *
      * @return string Always "libvips".
@@ -37,13 +45,207 @@ final class LibvipsDriver extends AbstractDriver
     }
 
     /**
-     * Checks whether the libvips PHP binding is installed.
+     * Checks whether php-vips can actually load the native libvips shared library.
      *
-     * @return bool True when {@see Image} class exists.
+     * The Composer package can be present while `libvips.42.dylib` / `libvips.so.42`
+     * is missing from the process library path.
+     *
+     * @return bool True when the binding and native library both load.
      */
     public function isAvailable(): bool
     {
-        return class_exists(Image::class);
+        if (self::$usable !== null) {
+            return self::$usable;
+        }
+
+        if (LibvipsCliBridge::shouldIsolate()) {
+            self::$usable = class_exists(Image::class)
+                && extension_loaded('ffi')
+                && LibvipsCliBridge::isCliAvailable();
+
+            return self::$usable;
+        }
+
+        self::$usable = $this->probeNativeLibrary();
+
+        return self::$usable;
+    }
+
+    /**
+     * Mark libvips unusable after a native load failure so later selects skip it.
+     */
+    public function markUnusable(): void
+    {
+        self::$usable = false;
+    }
+
+    /**
+     * Whether this process should run libvips work in a CLI child.
+     */
+    public function usesProcessIsolation(): bool
+    {
+        return LibvipsCliBridge::shouldIsolate();
+    }
+
+    /**
+     * Load, apply operations, and encode via native `vips` or one PHP CLI worker.
+     *
+     * @param list<OperationDefinition> $operations
+     */
+    public function processAndEncodeIsolated(
+        SourceImage $source,
+        array $operations,
+        string $format,
+        EncodeOptions $options,
+        int $maxSourcePixels = 0,
+    ): EncodedImage {
+        $normalized = $this->normalizeFormat($format);
+        $ext = $normalized === 'jpeg' ? 'jpg' : $normalized;
+        $encodedOutPath = $this->tempIsolatedPath($ext);
+
+        $binaryResult = $this->tryNativeVipsThumbnail(
+            $source,
+            $operations,
+            $encodedOutPath,
+            $options,
+            $maxSourcePixels,
+        );
+        if ($binaryResult !== null) {
+            return $binaryResult;
+        }
+
+        $job = [
+            'action' => 'pipeline',
+            'sourcePath' => (string) ($source->path ?? ''),
+            'mime' => $source->mime ?? 'image/jpeg',
+            'format' => $format,
+            'encodedOutPath' => $encodedOutPath,
+            'maxSourcePixels' => $maxSourcePixels,
+            'operations' => array_map(
+                static fn (OperationDefinition $op): array => $op->toArray(),
+                $operations,
+            ),
+            'options' => [
+                'quality' => $options->quality,
+                'stripMetadata' => $options->stripMetadata,
+                'extra' => $options->extra,
+            ],
+            'allowUpscale' => $this->allowUpscale,
+            'sharpness' => $this->sharpness()->toIdentityArray(),
+        ];
+
+        if ($source->bytes !== null) {
+            $job['sourceBytesBase64'] = base64_encode($source->bytes);
+        }
+
+        $result = LibvipsCliBridge::run($job);
+        $path = (string) ($result['path'] ?? $encodedOutPath);
+        if ($path === '' || !is_file($path)) {
+            throw new ProcessingException('Libvips CLI pipeline did not produce an encoded file.');
+        }
+
+        $bytes = file_get_contents($path);
+        @unlink($path);
+        if ($bytes === false) {
+            throw new ProcessingException('Failed to read libvips CLI pipeline output.');
+        }
+
+        return new EncodedImage(
+            $normalized,
+            (int) ($result['width'] ?? 0),
+            (int) ($result['height'] ?? 0),
+            strlen($bytes),
+            $this->formatMime($normalized),
+            $bytes,
+        );
+    }
+
+    /**
+     * Prefer the native `vips` binary for common fit/fill/crop + encode jobs.
+     *
+     * @param list<OperationDefinition> $operations
+     */
+    private function tryNativeVipsThumbnail(
+        SourceImage $source,
+        array $operations,
+        string $encodedOutPath,
+        EncodeOptions $options,
+        int $maxSourcePixels,
+    ): ?EncodedImage {
+        if ($source->path === null || !is_readable($source->path)) {
+            return null;
+        }
+
+        if (LibvipsCliBridge::resolveVipsBinary() === null) {
+            return null;
+        }
+
+        // Bytes-only sources and multi-step pipelines stay on the PHP worker.
+        if ($source->bytes !== null || count($operations) !== 1) {
+            return null;
+        }
+
+        $op = $operations[0];
+        $type = strtolower($op->type);
+        if (!in_array($type, ['fit', 'fill', 'crop', 'resize'], true)) {
+            return null;
+        }
+
+        $width = isset($op->options['width']) ? (int) $op->options['width'] : null;
+        $height = isset($op->options['height']) ? (int) $op->options['height'] : null;
+        if (($width === null || $width <= 0) && ($height === null || $height <= 0)) {
+            return null;
+        }
+
+        if ($maxSourcePixels > 0) {
+            $info = @getimagesize($source->path);
+            if (is_array($info) && (($info[0] * $info[1]) > $maxSourcePixels)) {
+                return null;
+            }
+        }
+
+        $crop = in_array($type, ['fill', 'crop'], true);
+        $quality = $options->quality;
+        if ($quality === null) {
+            $quality = match ($this->normalizeFormat((string) pathinfo($encodedOutPath, PATHINFO_EXTENSION))) {
+                'jpeg', 'jpg' => 82,
+                'webp' => 80,
+                'avif' => 65,
+                default => null,
+            };
+        }
+
+        try {
+            $result = LibvipsCliBridge::runThumbnail($source->path, $encodedOutPath, [
+                'width' => $width,
+                'height' => $height,
+                'crop' => $crop,
+                'quality' => $quality,
+                'strip' => $options->stripMetadata,
+                'effort' => isset($options->extra['effort'])
+                    ? (int) $options->extra['effort']
+                    : 0,
+            ]);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $bytes = file_get_contents($result['path']);
+        @unlink($result['path']);
+        if ($bytes === false) {
+            return null;
+        }
+
+        $normalized = $this->normalizeFormat((string) pathinfo($encodedOutPath, PATHINFO_EXTENSION));
+
+        return new EncodedImage(
+            $normalized === 'jpg' ? 'jpeg' : $normalized,
+            $result['width'],
+            $result['height'],
+            strlen($bytes),
+            $this->formatMime($normalized === 'jpg' ? 'jpeg' : $normalized),
+            $bytes,
+        );
     }
 
     /**
@@ -57,6 +259,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function load(SourceImage $source): ImageHandle
     {
+        if (LibvipsCliBridge::shouldIsolate()) {
+            return $this->loadIsolated($source);
+        }
+
         if ($source->path !== null && is_readable($source->path)) {
             $image = Image::newFromFile($source->path, ['access' => 'sequential']);
         } elseif ($source->bytes !== null) {
@@ -123,14 +329,28 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function encodeNative(ImageHandle $handle, string $format, EncodeOptions $options): EncodedImage
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->encodeIsolated($handle, $format, $options);
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
         $format = $this->normalizeFormat($format);
 
+        if (in_array($format, ['jpeg', 'jpg'], true) && (int) $image->bands >= 4) {
+            $background = $this->parseBackgroundRgb((string) ($options->extra['background'] ?? '#ffffff'));
+            $image = $image->flatten(['background' => $background]);
+        }
+
         $saveOptions = match ($format) {
             'jpeg', 'jpg' => ['Q' => $options->qualityOrDefault(82)],
             'webp' => ['Q' => $options->qualityOrDefault(80)],
-            'avif' => ['Q' => $options->qualityOrDefault(65)],
+            // Default effort 0: libvips AVIF effort 4+ is an order of magnitude slower
+            // under FPM isolation and dominates srcset generation time.
+            'avif' => [
+                'Q' => $options->qualityOrDefault(65),
+                'effort' => max(0, min(9, (int) ($options->extra['effort'] ?? 0))),
+            ],
             'png' => [],
             default => throw new UnsupportedFormatException(sprintf('Format "%s" is not supported by Libvips.', $format)),
         };
@@ -165,7 +385,13 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function destroy(ImageHandle $handle): void
     {
-        // Libvips Image objects are garbage-collected.
+        if ($this->isIsolatedHandle($handle)) {
+            $path = (string) ($handle->resource['path'] ?? '');
+            if ($path !== '' && is_file($path)) {
+                @unlink($path);
+            }
+        }
+        // In-process Libvips Image objects are garbage-collected.
     }
 
     /**
@@ -180,6 +406,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function resize(ImageHandle $handle, ?int $width, ?int $height, string $mode = 'fit'): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'resize', [$width, $height, $mode]);
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
         [$targetWidth, $targetHeight] = $this->resolveTargetDimensions($handle, $width, $height, $mode);
@@ -201,6 +431,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function crop(ImageHandle $handle, int $width, int $height, string $position = 'center-center'): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'crop', [$width, $height, $position]);
+        }
+
         [$width, $height] = $this->limitUpscale($handle->width, $handle->height, $width, $height);
         [$srcX, $srcY, $cropWidth, $cropHeight] = $this->calculateCropBox(
             $handle->width,
@@ -267,6 +501,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function scale(ImageHandle $handle, float $factor): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'scale', [$factor]);
+        }
+
         if (!$this->allowUpscale && $factor > 1.0) {
             $factor = 1.0;
         }
@@ -288,6 +526,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function rotate(ImageHandle $handle, float $angle): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'rotate', [$angle]);
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
         $rotated = $image->rotate($angle);
@@ -305,6 +547,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function flip(ImageHandle $handle, string $direction = 'horizontal'): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'flip', [$direction]);
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
         $flipped = $direction === 'vertical' ? $image->flipvertical() : $image->fliphoriz();
@@ -322,6 +568,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function brightness(ImageHandle $handle, float $amount): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'brightness', [$amount]);
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
 
@@ -338,6 +588,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function contrast(ImageHandle $handle, float $amount): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'contrast', [$amount]);
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
         $factor = 1 + ($amount / 100);
@@ -354,6 +608,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function grayscale(ImageHandle $handle): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'grayscale', []);
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
 
@@ -370,6 +628,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function sharpen(ImageHandle $handle, float $amount = 1.0): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'sharpen', [$amount]);
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
 
@@ -386,6 +648,10 @@ final class LibvipsDriver extends AbstractDriver
      */
     public function blur(ImageHandle $handle, float $sigma = 1.0): ImageHandle
     {
+        if ($this->isIsolatedHandle($handle)) {
+            return $this->runIsolatedOp($handle, 'blur', [$sigma]);
+        }
+
         /** @var Image $image */
         $image = $handle->resource;
 
@@ -490,6 +756,23 @@ final class LibvipsDriver extends AbstractDriver
     }
 
     /**
+     * @return list<int>
+     */
+    private function parseBackgroundRgb(string $color): array
+    {
+        $color = ltrim(trim($color), '#');
+        if (strlen($color) === 6 && ctype_xdigit($color)) {
+            return [
+                (int) hexdec(substr($color, 0, 2)),
+                (int) hexdec(substr($color, 2, 2)),
+                (int) hexdec(substr($color, 4, 2)),
+            ];
+        }
+
+        return [255, 255, 255];
+    }
+
+    /**
      * Maps a normalized format slug to its MIME type string.
      *
      * @param string $format Normalized format slug.
@@ -505,5 +788,155 @@ final class LibvipsDriver extends AbstractDriver
             'avif' => 'image/avif',
             default => 'application/octet-stream',
         };
+    }
+
+    /**
+     * Probes php-vips FFI so a missing dylib is treated as unavailable, not a runtime error.
+     */
+    private function probeNativeLibrary(): bool
+    {
+        if (!class_exists(Image::class) || !extension_loaded('ffi')) {
+            return false;
+        }
+
+        $ffiEnable = strtolower((string) ini_get('ffi.enable'));
+        if (!in_array($ffiEnable, ['1', 'true', 'on', 'yes'], true)) {
+            return false;
+        }
+
+        try {
+            // PHP-FPM + FFI is fragile with libvips thread pools on some macOS builds.
+            // Cap concurrency before any image work (also set via env when possible).
+            if (getenv('VIPS_CONCURRENCY') === false || getenv('VIPS_CONCURRENCY') === '') {
+                putenv('VIPS_CONCURRENCY=1');
+            }
+            VipsConfig::version();
+            if (method_exists(VipsConfig::class, 'concurrencySet')) {
+                VipsConfig::concurrencySet(max(1, (int) (getenv('VIPS_CONCURRENCY') ?: 1)));
+            }
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * @param array{path?: string}|mixed $resource
+     */
+    private function isIsolatedHandle(ImageHandle $handle): bool
+    {
+        return is_array($handle->resource) && (($handle->resource['isolated'] ?? false) === true);
+    }
+
+    private function loadIsolated(SourceImage $source): ImageHandle
+    {
+        $outPath = $this->tempIsolatedPath();
+        $job = [
+            'action' => 'load',
+            'sourcePath' => (string) ($source->path ?? ''),
+            'outPath' => $outPath,
+            'mime' => $source->mime ?? 'image/jpeg',
+            'allowUpscale' => $this->allowUpscale,
+            'sharpness' => $this->sharpness()->toIdentityArray(),
+        ];
+
+        if ($source->bytes !== null) {
+            $job['sourceBytesBase64'] = base64_encode($source->bytes);
+        }
+
+        $result = LibvipsCliBridge::run($job);
+        return $this->handleFromIsolatedResult($result, $source->mime ?? 'image/jpeg');
+    }
+
+    /**
+     * @param list<mixed> $args
+     */
+    private function runIsolatedOp(ImageHandle $handle, string $method, array $args): ImageHandle
+    {
+        $inPath = (string) ($handle->resource['path'] ?? '');
+        $outPath = $this->tempIsolatedPath();
+        $result = LibvipsCliBridge::run([
+            'action' => 'op',
+            'method' => $method,
+            'args' => $args,
+            'inPath' => $inPath,
+            'outPath' => $outPath,
+            'mime' => $handle->mime,
+            'allowUpscale' => $this->allowUpscale,
+            'sharpness' => $this->sharpness()->toIdentityArray(),
+        ]);
+
+        if ($inPath !== '' && is_file($inPath)) {
+            @unlink($inPath);
+        }
+
+        return $this->handleFromIsolatedResult($result, $handle->mime);
+    }
+
+    private function encodeIsolated(ImageHandle $handle, string $format, EncodeOptions $options): EncodedImage
+    {
+        $result = LibvipsCliBridge::run([
+            'action' => 'encode',
+            'inPath' => (string) ($handle->resource['path'] ?? ''),
+            'format' => $format,
+            'mime' => $handle->mime,
+            'options' => [
+                'quality' => $options->quality,
+                'stripMetadata' => $options->stripMetadata,
+                'extra' => $options->extra,
+            ],
+            'allowUpscale' => $this->allowUpscale,
+            'sharpness' => $this->sharpness()->toIdentityArray(),
+        ]);
+
+        $bytes = base64_decode((string) ($result['bytes'] ?? ''), true);
+        if ($bytes === false) {
+            throw new ProcessingException('Libvips CLI encode returned invalid bytes.');
+        }
+
+        $normalized = $this->normalizeFormat($format);
+
+        return new EncodedImage(
+            $normalized,
+            (int) ($result['width'] ?? $handle->width),
+            (int) ($result['height'] ?? $handle->height),
+            strlen($bytes),
+            $this->formatMime($normalized),
+            $bytes,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     */
+    private function handleFromIsolatedResult(array $result, string $mime): ImageHandle
+    {
+        $path = (string) ($result['path'] ?? '');
+        if ($path === '' || !is_file($path)) {
+            throw new ProcessingException('Libvips CLI worker did not produce an image file.');
+        }
+
+        return new ImageHandle(
+            $this->name(),
+            [
+                'isolated' => true,
+                'path' => $path,
+            ],
+            (int) ($result['width'] ?? 0),
+            (int) ($result['height'] ?? 0),
+            (bool) ($result['hasAlpha'] ?? false),
+            (string) ($result['mime'] ?? $mime),
+        );
+    }
+
+    private function tempIsolatedPath(string $extension = 'tif'): string
+    {
+        $dir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'super-images-vips';
+        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new ProcessingException('Cannot create libvips isolation temp directory.');
+        }
+
+        return $dir . DIRECTORY_SEPARATOR . 'img_' . bin2hex(random_bytes(8)) . '.' . ltrim($extension, '.');
     }
 }

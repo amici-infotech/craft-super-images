@@ -39,13 +39,28 @@ final class ImagickDriver extends AbstractDriver
     }
 
     /**
-     * Checks whether the Imagick extension and class are available.
+     * Checks whether Imagick is loaded and can instantiate in this SAPI.
      *
-     * @return bool True when `imagick` is loaded and {@see Imagick} exists.
+     * Extension-loaded alone is not enough — MagickWand library mismatches can
+     * leave the module registered while `new Imagick()` fails.
+     *
+     * @return bool True when Imagick constructs successfully.
      */
     public function isAvailable(): bool
     {
-        return extension_loaded('imagick') && class_exists(Imagick::class);
+        if (!extension_loaded('imagick') || !class_exists(Imagick::class)) {
+            return false;
+        }
+
+        try {
+            $imagick = new Imagick();
+            $imagick->clear();
+            $imagick->destroy();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

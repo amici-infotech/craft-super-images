@@ -8,9 +8,12 @@
 
 namespace amici\SuperImages\services;
 
+use amici\SuperImages\contracts\ImageDriverInterface;
 use amici\SuperImages\Plugin;
+use amici\SuperImages\support\LibvipsCliBridge;
 use amici\SuperImages\support\UbuntuInstallHints;
 use Craft;
+use Jcupitt\Vips\Image as VipsImage;
 use yii\base\Component;
 
 /**
@@ -87,6 +90,11 @@ class DiagnosticsService extends Component
             $selectedName = null;
         }
 
+        $gdOk = false;
+        $imagickOk = false;
+        $libvipsOk = false;
+        $anyDriverOk = false;
+
         foreach (['gd', 'imagick', 'libvips'] as $driverName) {
             $driver = null;
             foreach ($plugin->getDriverManager()->all() as $candidate) {
@@ -96,20 +104,94 @@ class DiagnosticsService extends Component
                 }
             }
 
-            $available = $driver !== null && $driver->isAvailable();
-            $label = strtoupper($driverName) === 'GD' ? 'GD' : ucfirst($driverName);
-            $detail = $available ? 'Available' : 'Not available on this host';
-            if ($available && $selectedName === $driverName) {
-                $detail .= ' · selected';
+            [$detail, $solution, $usable] = $this->driverCheckParts($driver, $driverName, $selectedName);
+            if ($driverName === 'gd') {
+                $gdOk = $usable;
+            }
+            if ($driverName === 'imagick') {
+                $imagickOk = $usable;
+            }
+            if ($driverName === 'libvips') {
+                $libvipsOk = $usable;
+            }
+            if ($usable) {
+                $anyDriverOk = true;
             }
 
+            $label = $driverName === 'gd' ? 'GD' : ($driverName === 'libvips' ? 'Libvips' : 'Imagick');
             $checks[] = $this->check(
                 'driver-' . $driverName,
                 self::GROUP_DRIVERS,
-                $available ? 'pass' : 'warn',
+                $usable ? 'pass' : 'warn',
                 $label,
                 $detail,
-                $available ? null : $this->formatInstallHint(UbuntuInstallHints::forDriver($driverName)),
+                $solution,
+            );
+        }
+
+        if (!$anyDriverOk) {
+            $checks[] = $this->check(
+                'drivers-any',
+                self::GROUP_DRIVERS,
+                'fail',
+                'No usable driver',
+                'GD, Imagick, and Libvips are all unavailable in this SAPI (' . PHP_SAPI . ').',
+                'Install at least one: php-gd, php-imagick, or libvips + jcupitt/vips + FFI. See docs/drivers.md, then restart PHP-FPM.',
+            );
+        }
+
+        $preferred = strtolower(trim((string) ($settings->driver ?: 'auto')));
+        if (in_array($preferred, ['gd', 'imagick', 'libvips'], true)) {
+            $preferredOk = match ($preferred) {
+                'gd' => $gdOk,
+                'imagick' => $imagickOk,
+                'libvips' => $libvipsOk,
+                default => false,
+            };
+            if (!$preferredOk) {
+                $checks[] = $this->check(
+                    'driver-preference',
+                    self::GROUP_DRIVERS,
+                    'warn',
+                    'Configured driver',
+                    sprintf(
+                        'config driver => %s is not usable; falling back%s.',
+                        $preferred,
+                        $selectedName !== null ? ' to ' . $selectedName : '',
+                    ),
+                    $this->formatInstallHint(UbuntuInstallHints::forDriver($preferred))
+                        ?? 'Fix the preferred driver or set driver => auto in config/super-images.php.',
+                );
+            }
+        }
+
+        $checks = array_merge($checks, $this->libvipsRuntimeChecks());
+
+        if ($imagickOk && $libvipsOk) {
+            $checks[] = $this->check(
+                'drivers-dual',
+                self::GROUP_DRIVERS,
+                'pass',
+                'Imagick + Libvips',
+                'Both usable. Preference: ' . ($settings->driver ?: 'auto') . ' (auto order: libvips → imagick → gd).',
+                'Only one driver runs per request. Pin driver => imagick or libvips in config/super-images.php if needed.',
+            );
+        } else {
+            $missing = [];
+            if (!$imagickOk) {
+                $missing[] = 'imagick';
+            }
+            if (!$libvipsOk) {
+                $missing[] = 'libvips';
+            }
+            $checks[] = $this->check(
+                'drivers-dual',
+                self::GROUP_DRIVERS,
+                'warn',
+                'Imagick + Libvips',
+                'Not both usable yet (' . implode(', ', $missing) . ' missing).' . ($gdOk ? ' GD may still run.' : ''),
+                $this->formatInstallHint(UbuntuInstallHints::forDriver($missing[0] ?? 'libvips'))
+                    ?? 'Install Imagick and/or libvips, enable FFI for libvips, restart PHP-FPM. See docs/drivers.md.',
             );
         }
 
@@ -126,7 +208,7 @@ class DiagnosticsService extends Component
                     : sprintf('%s reports no formats', $selected->name()),
                 $formats !== []
                     ? null
-                    : 'Install/enable an image driver (php-gd, php-imagick, or libvips) and set `driver` in config.',
+                    : 'Install/enable GD, Imagick, or Libvips and set `driver` in config. See docs/drivers.md.',
             );
         } catch (\Throwable $exception) {
             $checks[] = $this->check(
@@ -135,7 +217,7 @@ class DiagnosticsService extends Component
                 'fail',
                 'Encode formats',
                 $exception->getMessage(),
-                'Install at least one driver (`sudo apt-get install -y php-gd`) and restart PHP-FPM. Prefer `driver => \'auto\'`.',
+                'Install at least one driver and prefer `driver => auto`. Imagick: php-imagick + restart FPM. Libvips: system libs + jcupitt/vips + ffi.enable=true. See docs/drivers.md.',
             );
         }
 
@@ -555,6 +637,119 @@ class DiagnosticsService extends Component
         }
 
         return implode(' — ', $parts);
+    }
+
+    /**
+     * @return array{0: string, 1: ?string, 2: bool} detail, solution, usable
+     */
+    private function driverCheckParts(?ImageDriverInterface $driver, string $driverName, ?string $selectedName): array
+    {
+        $usable = $driver !== null && $driver->isAvailable();
+
+        if ($usable) {
+            $detail = 'Available · usable in this SAPI (' . PHP_SAPI . ')';
+            if ($driverName === 'libvips' && LibvipsCliBridge::shouldIsolate()) {
+                $detail .= ' · FPM isolation via vips CLI / PHP worker';
+            }
+            $solution = null;
+        } else {
+            $detail = $this->driverUnavailableDetail($driverName);
+            $solution = $this->formatInstallHint(UbuntuInstallHints::forDriver($driverName))
+                ?? 'Install the matching PHP extension or libvips + FFI. See docs/drivers.md.';
+        }
+
+        if ($usable && $selectedName === $driverName) {
+            $detail .= ' · selected';
+        }
+
+        return [$detail, $solution, $usable];
+    }
+
+    private function driverUnavailableDetail(string $name): string
+    {
+        if ($name === 'imagick') {
+            if (!extension_loaded('imagick')) {
+                return 'PHP imagick extension not loaded for this SAPI (' . PHP_SAPI . ').';
+            }
+            if (!class_exists(\Imagick::class)) {
+                return 'Imagick class missing (extension loaded but broken).';
+            }
+
+            return 'Imagick cannot instantiate (MagickWand mismatch or broken install).';
+        }
+
+        if ($name === 'libvips') {
+            if (!class_exists(VipsImage::class)) {
+                return 'php-vips binding missing (composer require jcupitt/vips).';
+            }
+            if (!extension_loaded('ffi')) {
+                return 'FFI extension not loaded.';
+            }
+            $ffiEnable = strtolower((string) ini_get('ffi.enable'));
+            if (!in_array($ffiEnable, ['1', 'true', 'on', 'yes'], true)) {
+                return 'FFI disabled (ffi.enable=' . ($ffiEnable !== '' ? $ffiEnable : 'off') . ').';
+            }
+            if (LibvipsCliBridge::shouldIsolate() && !LibvipsCliBridge::isCliAvailable()) {
+                return 'Under FPM isolation, neither the vips binary nor a PHP CLI worker responded.';
+            }
+
+            return 'Native libvips library did not load (libvips.so / dylib missing or unreadable).';
+        }
+
+        if ($name === 'gd') {
+            if (!extension_loaded('gd')) {
+                return 'PHP gd extension not loaded for this SAPI (' . PHP_SAPI . ').';
+            }
+
+            return 'GD loaded but imagecreatetruecolor() is missing.';
+        }
+
+        return 'Not installed or not usable in this SAPI.';
+    }
+
+    /**
+     * @return list<array{id: string, group: string, status: 'pass'|'warn'|'fail', label: string, detail: string, solution: ?string}>
+     */
+    private function libvipsRuntimeChecks(): array
+    {
+        $ffiLoaded = extension_loaded('ffi');
+        $ffiEnable = strtolower((string) ini_get('ffi.enable'));
+        $ffiOn = $ffiLoaded && in_array($ffiEnable, ['1', 'true', 'on', 'yes'], true);
+
+        $checks = [];
+        $checks[] = $this->check(
+            'ffi',
+            self::GROUP_DRIVERS,
+            $ffiOn ? 'pass' : 'warn',
+            'FFI (libvips)',
+            $ffiLoaded
+                ? 'extension loaded · ffi.enable=' . ($ffiEnable !== '' ? $ffiEnable : 'off')
+                : 'FFI extension not loaded.',
+            $ffiOn
+                ? 'Required for php-vips. Keep zend.max_allowed_stack_size=-1 on PHP 8.3+.'
+                : 'Set ffi.enable=true in the FPM php.ini (install php8.x-ffi if needed), then restart PHP-FPM. See docs/drivers.md.',
+        );
+
+        $isolate = LibvipsCliBridge::shouldIsolate();
+        $cliOk = $isolate ? LibvipsCliBridge::isCliAvailable() : true;
+        $checks[] = $this->check(
+            'libvips-isolation',
+            self::GROUP_DRIVERS,
+            (!$isolate || $cliOk) ? 'pass' : 'warn',
+            'Libvips FPM isolation',
+            $isolate
+                ? ($cliOk
+                    ? 'Active for SAPI ' . PHP_SAPI . ' (vips CLI and/or PHP worker OK).'
+                    : 'Needed for SAPI ' . PHP_SAPI . ' but neither vips binary nor PHP CLI worker responded.')
+                : 'Not required for SAPI ' . PHP_SAPI . ' (in-process libvips OK).',
+            $isolate && !$cliOk
+                ? 'Install libvips-tools / brew install vips, or set SUPER_IMAGES_VIPS_BINARY / SUPER_IMAGES_PHP_BINARY. See docs/drivers.md.'
+                : ($isolate
+                    ? 'Isolation avoids FFI SIGSEGV under FPM. Override with SUPER_IMAGES_VIPS_ISOLATE=0 only for debugging.'
+                    : null),
+        );
+
+        return $checks;
     }
 
     /**

@@ -21,6 +21,8 @@ php craft super-images/doctor
 php craft super-images/status
 ```
 
+Doctor flags missing drivers and binaries with Ubuntu install hints. Full step-by-step install + FAQs for GD, Imagick, and libvips (including FPM / nginx 502): [Drivers](./drivers.md).
+
 ---
 
 ## 2. Output your first image
@@ -96,6 +98,9 @@ Open `/super-images` — geometry, formats, delivery modes, copy-paste Twig snip
 **Where are transforms stored?**  
 On the configured adapter (`local`, `r2`, `spaces`, …). Not in Craft's `assets` volume unless you point an adapter there.
 
+**Libvips errors about `libvips.so` / “Unable to open library” / nginx 502 on generate?**  
+The PHP binding can be present while the native library or FFI is missing — or FPM may SIGSEGV on in-process FFI. With `driver => auto`, Super Images falls back to Imagick, then GD. Ubuntu / Herd install steps and FAQs: [Drivers](./drivers.md).
+
 **Why is my CDN URL 404 but CLI says generated?**  
 `baseUrl` must match the bucket you're uploading to. After switching adapters, run `php craft super-images/cleanup --all=1` and regenerate.
 
@@ -112,6 +117,8 @@ Copy the starter classes in [`examples/`](../examples/README.md).
 | Topic | Doc |
 |---|---|
 | All config keys | [Configuration](./configuration.md) |
+| Install GD / Imagick / libvips | [Drivers](./drivers.md) |
+| Doctor & cleanup | [Diagnostics](./diagnostics.md) |
 | Twig API | [Twig](./twig.md) |
 | CLI commands | [CLI](./cli.md) |
 | R2 / Spaces setup | [Storage](./storage.md) |

@@ -30,15 +30,16 @@ Source → Transform → Encode → Optimize → Store → URL
 - **[Twig & frontend](./twig.md)** — `url`, `img`, `picture`, `srcset`, operations
 
 ### Operations
+- **[Drivers](./drivers.md)** — Ubuntu (+ Herd) install guides + FAQs for GD, Imagick, libvips (auto: libvips → Imagick → GD)
 - **[CLI & queue](./cli.md)** — generate, doctor, cleanup, status
 - **[Storage & naming](./storage.md)** — adapters, paths, markers, R2/Spaces
-- **[Encoders & optimizers](./encoders-optimizers.md)** — jpegoptim, cwebp, job vs runtime
+- **[Encoders & optimizers](./encoders-optimizers.md)** — jpegoptim, cwebp, effort/method tradeoffs, job vs runtime
 - **[Delivery](./delivery.md)** — generate before page load vs signed runtime URLs
 - **[Policies](./policies.md)** — safety, fallback, auto-cleanup rules
 
 ### Control Panel
 - **[Control Panel](./control-panel.md)** — dashboard, playground, settings
-- **[Diagnostics](./diagnostics.md)** — doctor checks, cleanup philosophy
+- **[Diagnostics](./diagnostics.md)** — doctor checks, cleanup philosophy, queue health
 
 ### Extend
 - **[Extension API](./extension-api.md)** — events, contracts, registration

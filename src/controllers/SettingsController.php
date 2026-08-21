@@ -48,6 +48,7 @@ class SettingsController extends Controller
         return $this->renderTemplate('super-images/settings/index', [
             'settings' => $settings,
             'binaries' => $plugin->getBinaryResolver()->inventory(),
+            'showOptimizerInstallHints' => $this->hasMissingRequiredOptimizerBinaries($plugin),
             'drivers' => $plugin->getDriverManager()->all(),
             'naming' => $naming,
             'namingTokens' => StoragePathBuilder::tokenGlossary(),
@@ -56,6 +57,34 @@ class SettingsController extends Controller
             'namingDefaults' => StoragePathBuilder::defaultNaming(),
             'configFileOverridesNaming' => $this->configFileDefinesNaming(),
         ]);
+    }
+
+    /**
+     * Whether any format-assigned optimizer binary is missing (show install hints link).
+     */
+    private function hasMissingRequiredOptimizerBinaries(Plugin $plugin): bool
+    {
+        $settings = $plugin->getSettings();
+        if (!(bool) ($settings->optimizers['enabled'] ?? true)) {
+            return false;
+        }
+
+        $inventory = $plugin->getBinaryResolver()->inventory();
+        $optimizers = $plugin->getOptimizerManager();
+
+        foreach (['jpeg', 'jpg', 'png', 'webp', 'avif'] as $format) {
+            [$tool] = $optimizers->normalizeToolConfig($settings->optimizers[$format] ?? null);
+            if ($tool === null || $tool === '') {
+                continue;
+            }
+
+            $row = $inventory[$tool] ?? null;
+            if ($row === null || !(bool) ($row['available'] ?? false)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

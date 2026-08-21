@@ -11,6 +11,7 @@ namespace amici\SuperImages\services;
 use amici\SuperImages\contracts\ImageDriverInterface;
 use amici\SuperImages\contracts\StorageAdapterInterface;
 use amici\SuperImages\drivers\AbstractDriver;
+use amici\SuperImages\drivers\LibvipsDriver;
 use amici\SuperImages\events\GenerationEvent;
 use amici\SuperImages\exceptions\ProcessingException;
 use amici\SuperImages\exceptions\SourceException;
@@ -177,6 +178,20 @@ class GenerationService extends Component
             'storageAdapter' => $request->storageAdapter,
             'preview' => $request->preview,
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * Detect native libvips/FFI load failures that should trigger driver fallback.
+     */
+    private function isNativeLibraryFailure(\Throwable $exception): bool
+    {
+        $message = $exception->getMessage();
+
+        return str_contains($message, 'Unable to open library')
+            || str_contains($message, 'FFI extension not loaded')
+            || str_contains($message, 'ffi.enable')
+            || str_contains($message, 'Libvips CLI')
+            || str_contains($message, 'vips thumbnail failed');
     }
 
     /**
@@ -410,6 +425,107 @@ class GenerationService extends Component
 
             $source = $sharedSource ?? $plugin->getSourceResolver()->resolve($request);
             $driver = $plugin->getDriverManager()->select($definition->driverPreference);
+
+            $formatKey = $this->normalizeFormatKey($definition->format);
+            $rawTool = $definition->optimizerOptions[$definition->format]
+                ?? $definition->optimizerOptions[$formatKey]
+                ?? null;
+            [$optimizerTool, $optimizerBinary, $optimizerArguments] = $plugin->getOptimizerManager()->normalizeToolConfig($rawTool);
+            $encoderArguments = $plugin->getOptimizerManager()->normalizeArguments(
+                $definition->encodeOptions->extra['arguments']
+                    ?? $definition->encodeOptions->extra['args']
+                    ?? null,
+            );
+            $cliArguments = $optimizerArguments !== [] ? $optimizerArguments : $encoderArguments;
+
+            $encoded = null;
+            $deferPostOptimize = false;
+            $useIsolatedPipeline = $driver instanceof LibvipsDriver && $driver->usesProcessIsolation();
+
+            if ($useIsolatedPipeline) {
+                if ($driver instanceof AbstractDriver) {
+                    $driver->setAllowUpscale($config->allowUpscale);
+                    $driver->setSharpness($config->sharpness);
+                }
+
+                $this->trigger(self::EVENT_BEFORE_ENCODE, new GenerationEvent([
+                    'request' => $request,
+                    'definition' => $definition,
+                    'identity' => $identity,
+                ]));
+
+                try {
+                    // Prefer native libvips encode under FPM isolation (avoids PNG→cwebp
+                    // requiring a second pipeline and prevents FFI SIGSEGV in the FPM process).
+                    $encoded = $driver->processAndEncodeIsolated(
+                        $source,
+                        $definition->operations,
+                        $definition->format,
+                        $definition->encodeOptions,
+                        $config->maxSourcePixels,
+                    );
+                } catch (\Throwable $exception) {
+                    if ($this->isNativeLibraryFailure($exception)) {
+                        $driver->markUnusable();
+                        Craft::warning(
+                            'Isolated libvips pipeline failed; falling back: ' . $exception->getMessage(),
+                            __METHOD__,
+                        );
+                        unset($this->_planCache[$this->planCacheKey($request)]);
+                        $planned = $this->plan($request);
+                        $identity = $planned['identity'];
+                        $storagePath = $planned['storagePath'];
+                        $definition = $planned['definition'];
+                        $config = $planned['config'];
+                        $storageUrl = $planned['storageUrl'];
+                        $driver = $plugin->getDriverManager()->select($definition->driverPreference);
+                        $encoded = null;
+                        $useIsolatedPipeline = false;
+                    } else {
+                        throw $exception;
+                    }
+                }
+
+                if ($encoded !== null) {
+                    $this->trigger(self::EVENT_AFTER_ENCODE, new GenerationEvent([
+                        'request' => $request,
+                        'definition' => $definition,
+                        'identity' => $identity,
+                    ]));
+
+                    $optimizer = $plugin->getOptimizerManager()->select(
+                        $definition->format,
+                        $definition->optimizerOptions,
+                        $config->optimizersEnabled,
+                    );
+
+                    if (
+                        $config->optimizersEnabled
+                        && $optimizerTool !== null
+                        && $optimizerTool !== ''
+                        && !$plugin->getOptimizerManager()->isExternalEncoder($optimizerTool)
+                        && $optimizer->name() !== 'null'
+                    ) {
+                        if ($plugin->getOptimizerManager()->shouldDeferPostOptimize($definition->optimizerOptions)) {
+                            $deferPostOptimize = true;
+                        } else {
+                            $encoded = $optimizer->optimize(
+                                $encoded,
+                                $definition->format,
+                                $this->buildOptimizerOptions(
+                                    $optimizerTool,
+                                    $optimizerBinary,
+                                    $definition->encodeOptions->quality,
+                                    null,
+                                    $cliArguments,
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+
+            if ($encoded === null) {
             $handle = $driver->load($source);
 
             $sourcePixels = $handle->width * $handle->height;
@@ -441,22 +557,9 @@ class GenerationService extends Component
                 'identity' => $identity,
             ]));
 
-            $formatKey = $this->normalizeFormatKey($definition->format);
-            $rawTool = $definition->optimizerOptions[$definition->format]
-                ?? $definition->optimizerOptions[$formatKey]
-                ?? null;
-            [$optimizerTool, $optimizerBinary, $optimizerArguments] = $plugin->getOptimizerManager()->normalizeToolConfig($rawTool);
-            $encoderArguments = $plugin->getOptimizerManager()->normalizeArguments(
-                $definition->encodeOptions->extra['arguments']
-                    ?? $definition->encodeOptions->extra['args']
-                    ?? null,
-            );
-            $cliArguments = $optimizerArguments !== [] ? $optimizerArguments : $encoderArguments;
-
             // Only route through PNG→cwebp/avifenc when the binary is actually callable.
             // Otherwise we used to write a PNG and rename it .webp (~MB files).
             $externalEncoder = null;
-            $deferPostOptimize = false;
             if (
                 $config->optimizersEnabled
                 && in_array($formatKey, ['webp', 'avif'], true)
@@ -555,6 +658,7 @@ class GenerationService extends Component
                     }
                 }
             }
+            } // end non-isolated encode path
 
             $this->validateEncodedOutput($encoded);
 

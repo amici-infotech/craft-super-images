@@ -5,6 +5,27 @@ All notable changes to **Super Images** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] — 2026-08-21
+
+### Fixed
+- PHP-FPM / nginx **502** with libvips: isolate image work from the FPM process (prefer native `vips` CLI; fall back to a PHP CLI worker), matching the ExpressionEngine mitigation
+- Unavailable explicit `driver` preference now falls through to the next usable driver instead of failing hard
+- GD / Imagick availability probes are stricter (real usability in the current SAPI, not “extension mentioned”)
+- Playground result meta matches the demo-style pills (dimensions / size / duration) with an open-in-new-tab link instead of a raw storage path
+- Dashboard: `1 profile` grammar; Settings hides “View install hints →” when all required optimizer binaries are available
+
+### Added
+- `LibvipsCliBridge` + `bin/libvips-worker.php` for safe libvips under FPM
+- Isolated pipeline path in `GenerationService` (native encode under isolation; Imagick/GD fallback on native failure)
+- Docs: full [Drivers](./docs/drivers.md) Ubuntu (+ Herd) install guides and FAQs; expanded [Diagnostics](./docs/diagnostics.md), encoder tradeoffs, getting-started / CP cross-links
+- Diagnostics: precise “why unavailable” details + install suggestions; FFI check; Imagick + Libvips dual-driver check; fail when no driver is usable; warn when pinned `driver` is unusable
+- Example / project config comments for encoder `effort` / `method` / progressive tradeoffs
+- `.env` overrides documented for `SUPER_IMAGES_VIPS_BINARY` / `SUPER_IMAGES_PHP_BINARY` / `SUPER_IMAGES_VIPS_ISOLATE`
+
+### Changed
+- Dashboard “Doctor” panel renamed to **System Health**; CLI doctor header prints **Diagnostics**
+- Driver manager logs and falls back when a requested driver is missing
+
 ## [5.0.0] — 2026-08-17
 
 Initial public release for **Craft CMS 5**.
@@ -37,40 +58,21 @@ Initial public release for **Craft CMS 5**.
 - S3-compatible adapter for AWS S3, DigitalOcean Spaces, and Cloudflare R2
 - Configurable storage adapters via extension events
 - Public URL delivery and signed runtime generation URLs
-- Existence markers (`@storage/super-images/markers`) for fast remote cache hits without network HEAD requests
-- Per-asset derivative index for remote cleanup and orphan detection
-- Long-lived `Cache-Control` on R2/S3 uploads (`public, max-age=31536000, immutable`)
+- Existence markers for remote adapters (cheap local checks before remote HEAD)
+- Configurable derivative path templates / naming conventions
 
 #### Twig & frontend
-- `craft.superImages` variable API — `url`, `img`, `picture`, `srcset`, `sources`, `exists`, `isEnabled`
-- Profile/variant/format resolution from `config/super-images.php`
-- Inline `operations` arrays for ad-hoc transforms
-- `generateBeforePageLoad` — generate during page request or defer via signed runtime URLs
-
-#### CLI
-- `super-images/status` — resolved config snapshot
-- `super-images/config` — dump effective configuration (optional `--asset` manifest sample)
-- `super-images/generate` — eager or queued generation by asset, volume, profile, variant, format
-- `super-images/doctor` — PASS/WARN/FAIL diagnostics (human or `--json=1`)
-- `super-images/cleanup` — aged, orphaned, per-asset, or full purge (`--all=1` clears markers + index)
+- `craft.superImages.url()`, `img()`, `picture()`, `srcset()`, `tryGenerate()`, `generate()`
+- Profile × variant × format responsive delivery
 
 #### Control Panel
-- Dashboard, settings, encoders overview, playground, and diagnostics
-- Permission-gated CP section
+- Dashboard, Playground, Encoders & Optimizers, Diagnostics, Settings
+- Asset index / asset detail actions to generate or clear Super Images derivatives
 
-#### Auto-generate & policies
-- Auto-generate on upload, replace, and focal-point change (inline or queued)
-- Volume-level overrides
-- Safety policies, fallbacks, and automatic cleanup when assets are deleted or replaced
-- Configurable retention for generated and preview artifacts
+#### CLI
+- `super-images/doctor`, `status`, `config`, `generate`, `cleanup`
 
-#### Extension API
-- Register custom drivers, encoders, optimizers, operations, and storage adapters via Yii events
-- Runnable reference classes in `examples/` — storage adapter, WebP encoder, JPEG optimizer, tint operation, and sample plugin wiring
-- Generation lifecycle events (`BEFORE_GENERATE`, `AFTER_GENERATE`, `BEFORE_ENCODE`, `AFTER_ENCODE`)
-
-#### Documentation & demo
-- Full docs under `docs/` — getting started, configuration, Twig, storage, CLI, encoders/optimizers, delivery, policies, extension API
+#### Docs & demo
 - Interactive Twig demo (`demo/`) — copy to `templates/super-images` and visit `/super-images`
 - Annotated example config: `config/super-images.example.php`
 
@@ -82,4 +84,5 @@ Initial public release for **Craft CMS 5**.
 - Optional: `aws/aws-sdk-php` for S3 / Spaces / R2
 - Optional: external optimizer binaries on `$PATH`
 
+[5.1.0]: https://github.com/amici-infotech/craft-super-images/releases/tag/5.1.0
 [5.0.0]: https://github.com/amici-infotech/craft-super-images/releases/tag/5.0.0

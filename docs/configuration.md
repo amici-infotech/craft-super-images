@@ -22,7 +22,7 @@ The Control Panel **Settings** screen shows the effective values and lets you ed
 |---|---|
 | `enabled` | Master switch. `false` = no transforms; Twig falls back to original URLs |
 | `defaultProfile` / `defaultFormat` | Used when Twig/CLI omit profile or format |
-| `driver` | `auto` \| `libvips` \| `imagick` \| `gd` |
+| `driver` | `auto` \| `libvips` \| `imagick` \| `gd` — see [Drivers](./drivers.md) |
 | `delivery` | Before-page-load generation + thumbnail placeholder |
 | `autoGenerate` | Queue on Asset upload / replace / focal-point change |
 | `sources` | Local path roots + remote host allow-list |

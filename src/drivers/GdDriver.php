@@ -36,13 +36,13 @@ final class GdDriver extends AbstractDriver
     }
 
     /**
-     * Checks whether the GD extension is loaded.
+     * Checks whether the GD extension can create images in this SAPI.
      *
-     * @return bool True when the `gd` PHP extension is available.
+     * @return bool True when `gd` is loaded and `imagecreatetruecolor` exists.
      */
     public function isAvailable(): bool
     {
-        return extension_loaded('gd');
+        return extension_loaded('gd') && function_exists('imagecreatetruecolor');
     }
 
     /**

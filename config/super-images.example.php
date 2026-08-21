@@ -24,7 +24,9 @@ return [
     'defaultFormat' => 'webp',
 
     // Image library preference: auto | libvips | imagick | gd
-    // auto picks the best available driver on the server.
+    // auto picks the best available driver on the server (libvips → imagick → gd).
+    // Under PHP-FPM, libvips is isolated via the `vips` CLI / PHP worker to avoid
+    // FFI SIGSEGV (nginx 502). See docs/drivers.md.
     'driver' => 'auto',
 
     // Delivery — same idea as Craft generateTransformsBeforePageLoad.
@@ -165,14 +167,23 @@ return [
 
     // Native encode options passed to the selected image driver.
     // Encoding itself is done by GD / Imagick / Libvips — not by jpegoptim/cwebp.
-    // Optional `arguments` apply when an external tool (e.g. cwebp) is used for that format.
+    // Tradeoffs: see docs/encoders-optimizers.md (quality / effort / method / progressive).
     'encoders' => [
-        // JPEG quality (0–100) and related options.
-        'jpeg' => ['quality' => 82],
-        // WebP quality (0–100). method/effort is passed to cwebp when webp optimizer is cwebp.
+        'jpeg' => [
+            'quality' => 82,          // 1–100 — lower = smaller + more artifacts
+            // 'progressive' => false, // progressive JPEG (slower encode; nicer large photos)
+            // 'background' => '#ffffff', // flatten alpha before JPEG
+        ],
+        'jpg' => ['quality' => 82],
+        'png' => [
+            // 'pngCompression' => 6, // 0–9 deflate effort (not “quality”)
+        ],
+        // WebP quality (0–100). method is Imagick webp:method and cwebp -m when webp optimizer is cwebp.
         'webp' => [
             'quality' => 80,
-            // 'method' => 4,
+            'method' => 4,            // 0–6; higher = smaller/slower
+            // 'alphaQuality' => 80,
+            // 'lossless' => false,
             // Custom cwebp argv (replaces defaults). Tokens: {input} {output} {quality} {effort} {method}
             // 'arguments' => [
             //     '-q' => '{quality}',
@@ -182,8 +193,12 @@ return [
             //     '_' => ['{input}'],
             // ],
         ],
-        // AVIF quality (0–100) when AVIF is enabled in a profile.
-        'avif' => ['quality' => 65],
+        // AVIF quality (0–100). effort is libvips/vips CLI encode effort (0–9).
+        // Default 0 = fast (recommended for FPM / on-demand srcset). Raise 4–6 for CLI batch size wins.
+        'avif' => [
+            'quality' => 65,
+            'effort' => 0,
+        ],
     ],
 
     // Optional post-encode binary optimizers (Ubuntu packages via apt).

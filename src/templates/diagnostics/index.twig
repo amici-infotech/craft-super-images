@@ -29,7 +29,7 @@
 
 {% block content %}
     <div class="readable">
-        <p>{{ "Doctor checks for drivers, storage, signing, optimizers, and queue health. Warnings and failures include a suggested fix."|t('super-images') }}</p>
+        <p>{{ "Checks drivers, storage, signing, optimizers, and queue health. Warnings and failures include a suggested fix."|t('super-images') }}</p>
         {% if report %}
             <p>
                 <span class="status green"></span> {{ report.pass }} {{ "passed"|t('super-images') }}

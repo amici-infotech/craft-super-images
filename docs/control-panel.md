@@ -40,7 +40,9 @@ Confirms:
 
 - Encoder quality from config
 - Which optimizer tool runs per format
-- Resolved binary paths + Ubuntu install hints when missing
+- Resolved binary paths + **Ubuntu apt install hints** (info tooltip) when a driver or binary is missing
+
+Live servers are assumed to be Ubuntu; hints use `sudo apt-get install …`. Full driver install guides and FAQs: [Drivers](./drivers.md).
 
 ---
 
@@ -55,7 +57,7 @@ Expands that profile’s **variants × formats** and runs the real pipeline.
 You get:
 
 - Original summary  
-- Grid of results (size, duration, % vs original)  
+- Grid of results with dimension / size / duration pills (demo-style) and an open-in-new-tab link  
 - Ready-to-copy Twig for the profile  
 
 Files land under `preview/YYYYMMDD/…` so they never collide with production derivatives.
@@ -67,6 +69,8 @@ php craft super-images/cleanup --previews-only --dry-run=0
 
 Retention: `cleanup.previewRetentionDays` (default `2`).
 
+If every preview fails with missing `libvips.so` / FFI, see [Drivers](./drivers.md) — auto fallback should select Imagick or GD instead.
+
 ---
 
 ## Diagnostics
@@ -77,7 +81,9 @@ Same checks as:
 php craft super-images/doctor
 ```
 
-Use this when formats, Imagick, or optimizers look wrong on a server.
+Including driver usability, Libvips FPM isolation, optimizer paths, storage writability, signing, and queue counts. Use this when formats, Imagick, libvips, or optimizers look wrong on a server.
+
+Details: [Diagnostics](./diagnostics.md). Driver install steps: [Drivers](./drivers.md).
 
 ---
 
