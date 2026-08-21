@@ -45,11 +45,13 @@ A binary **not found on PATH** is **WARN**, not pass — even when the format st
 
 ### Overall health
 
-| Condition | Meaning |
+| Condition | Badge |
 |---|---|
 | Any check `fail` | Needs attention |
 | Queue has failed jobs | Warnings |
-| Otherwise (including optimizer WARNs only) | Healthy enough to transform |
+| Warnings only (unused drivers, dual Imagick+Libvips tip, optional optimizers, …) | **Healthy** |
+
+**Fail (not warn) when it matters:** preferred `driver => libvips|imagick|gd` is unusable; selected driver is Libvips and FFI / FPM isolation is broken; no driver works at all.
 
 Missing optional optimizers do not block transforms; native driver encoders still produce output.
 

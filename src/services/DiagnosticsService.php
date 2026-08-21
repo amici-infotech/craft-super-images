@@ -119,10 +119,18 @@ class DiagnosticsService extends Component
             }
 
             $label = $driverName === 'gd' ? 'GD' : ($driverName === 'libvips' ? 'Libvips' : 'Imagick');
+            $status = 'pass';
+            if (!$usable) {
+                // Preferred driver broken = blocks intended production path → fail.
+                // Other missing drivers stay warn (optional fallbacks).
+                $preferred = strtolower(trim((string) ($settings->driver ?: 'auto')));
+                $status = ($preferred === $driverName) ? 'fail' : 'warn';
+            }
+
             $checks[] = $this->check(
                 'driver-' . $driverName,
                 self::GROUP_DRIVERS,
-                $usable ? 'pass' : 'warn',
+                $status,
                 $label,
                 $detail,
                 $solution,
@@ -152,7 +160,7 @@ class DiagnosticsService extends Component
                 $checks[] = $this->check(
                     'driver-preference',
                     self::GROUP_DRIVERS,
-                    'warn',
+                    'fail',
                     'Configured driver',
                     sprintf(
                         'config driver => %s is not usable; falling back%s.',
@@ -165,7 +173,7 @@ class DiagnosticsService extends Component
             }
         }
 
-        $checks = array_merge($checks, $this->libvipsRuntimeChecks());
+        $checks = array_merge($checks, $this->libvipsRuntimeChecks($selectedName, $preferred));
 
         if ($imagickOk && $libvipsOk) {
             $checks[] = $this->check(
@@ -561,7 +569,26 @@ class DiagnosticsService extends Component
             $selectedDriver = null;
         }
 
+        $driverUsable = false;
+        if ($selectedDriver !== null) {
+            foreach ($checks as $check) {
+                if (($check['id'] ?? '') === 'driver-' . $selectedDriver) {
+                    $driverUsable = ($check['status'] ?? '') === 'pass';
+                    break;
+                }
+            }
+            if (!$driverUsable) {
+                foreach ($plugin->getDriverManager()->all() as $candidate) {
+                    if ($candidate->name() === $selectedDriver) {
+                        $driverUsable = $candidate->isAvailable();
+                        break;
+                    }
+                }
+            }
+        }
+
         $beforePageLoad = $plugin->getDeliveryUrls()->generatesBeforePageLoad();
+        $queue = $this->queueCounts();
 
         return [
             'enabled' => $settings->enabled,
@@ -571,6 +598,8 @@ class DiagnosticsService extends Component
             'defaultFormat' => $settings->defaultFormat,
             'driver' => $settings->driver,
             'selectedDriver' => $selectedDriver,
+            'driverUsable' => $driverUsable,
+            'health' => $this->resolveHealthStatus($report, $queue),
             'storageDefault' => $settings->storage['default'] ?? 'local',
             'profileCount' => count($settings->profiles),
             'doctor' => [
@@ -580,9 +609,35 @@ class DiagnosticsService extends Component
                 'checks' => $checks,
                 'groups' => $report['groups'],
             ],
-            'queue' => $this->queueCounts(),
+            'queue' => $queue,
             'binaries' => $plugin->getBinaryResolver()->inventory(),
         ];
+    }
+
+    /**
+     * Map doctor results to a dashboard health badge status.
+     *
+     * Only real failures (and failed queue jobs) flip the badge. Optional
+     * warnings — missing unused drivers, dual Imagick+Libvips tip, unused
+     * optimizer binaries — stay Healthy. Selected/preferred driver problems
+     * are elevated to `fail` in {@see runDoctor()} so they surface here.
+     *
+     * @param array{summary: array{fail: int}} $report
+     * @param array{available: bool, failed: int} $queue
+     *
+     * @return 'healthy'|'warnings'|'attention'
+     */
+    private function resolveHealthStatus(array $report, array $queue): string
+    {
+        if (($report['summary']['fail'] ?? 0) > 0) {
+            return 'attention';
+        }
+
+        if (($queue['available'] ?? false) && ($queue['failed'] ?? 0) > 0) {
+            return 'warnings';
+        }
+
+        return 'healthy';
     }
 
     /**
@@ -710,8 +765,10 @@ class DiagnosticsService extends Component
     /**
      * @return list<array{id: string, group: string, status: 'pass'|'warn'|'fail', label: string, detail: string, solution: ?string}>
      */
-    private function libvipsRuntimeChecks(): array
+    private function libvipsRuntimeChecks(?string $selectedDriver, string $preference): array
     {
+        $libvipsInPlay = $preference === 'libvips' || $selectedDriver === 'libvips';
+
         $ffiLoaded = extension_loaded('ffi');
         $ffiEnable = strtolower((string) ini_get('ffi.enable'));
         $ffiOn = $ffiLoaded && in_array($ffiEnable, ['1', 'true', 'on', 'yes'], true);
@@ -720,7 +777,7 @@ class DiagnosticsService extends Component
         $checks[] = $this->check(
             'ffi',
             self::GROUP_DRIVERS,
-            $ffiOn ? 'pass' : 'warn',
+            $ffiOn ? 'pass' : ($libvipsInPlay ? 'fail' : 'warn'),
             'FFI (libvips)',
             $ffiLoaded
                 ? 'extension loaded · ffi.enable=' . ($ffiEnable !== '' ? $ffiEnable : 'off')
@@ -732,17 +789,18 @@ class DiagnosticsService extends Component
 
         $isolate = LibvipsCliBridge::shouldIsolate();
         $cliOk = $isolate ? LibvipsCliBridge::isCliAvailable() : true;
+        $isolationOk = !$isolate || $cliOk;
         $checks[] = $this->check(
             'libvips-isolation',
             self::GROUP_DRIVERS,
-            (!$isolate || $cliOk) ? 'pass' : 'warn',
+            $isolationOk ? 'pass' : ($libvipsInPlay ? 'fail' : 'warn'),
             'Libvips FPM isolation',
             $isolate
                 ? ($cliOk
                     ? 'Active for SAPI ' . PHP_SAPI . ' (vips CLI and/or PHP worker OK).'
                     : 'Needed for SAPI ' . PHP_SAPI . ' but neither vips binary nor PHP CLI worker responded.')
                 : 'Not required for SAPI ' . PHP_SAPI . ' (in-process libvips OK).',
-            $isolate && !$cliOk
+            !$isolationOk
                 ? 'Install libvips-tools / brew install vips, or set SUPER_IMAGES_VIPS_BINARY / SUPER_IMAGES_PHP_BINARY. See docs/drivers.md.'
                 : ($isolate
                     ? 'Isolation avoids FFI SIGSEGV under FPM. Override with SUPER_IMAGES_VIPS_ISOLATE=0 only for debugging.'

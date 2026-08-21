@@ -6,8 +6,11 @@
     { label: "Super Images"|t('super-images'), url: cpUrl('super-images') },
 ] %}
 
-{% set doctorOk = summary.doctor.fail == 0 %}
 {% set queueFailed = summary.queue.available and summary.queue.failed > 0 %}
+{% set health = summary.health ?? 'healthy' %}
+{% if queueFailed and health == 'healthy' %}
+    {% set health = 'warnings' %}
+{% endif %}
 
 {% css %}
 .si-dash {
@@ -160,9 +163,9 @@
                 <p>{{ "Pipeline health and delivery settings. PHP config (`config/super-images.php`) is the source of truth."|t('super-images') }}</p>
             </div>
             <div class="si-dash__actions">
-                {% if doctorOk and not queueFailed %}
+                {% if health == 'healthy' %}
                     <span class="si-dash__badge si-dash__badge--ok"><span class="status green"></span> {{ "Healthy"|t('super-images') }}</span>
-                {% elseif summary.doctor.fail > 0 %}
+                {% elseif health == 'attention' %}
                     <span class="si-dash__badge si-dash__badge--fail"><span class="status red"></span> {{ "Needs attention"|t('super-images') }}</span>
                 {% else %}
                     <span class="si-dash__badge si-dash__badge--warn"><span class="status orange"></span> {{ "Warnings"|t('super-images') }}</span>
@@ -187,8 +190,15 @@
             </div>
             <div class="si-dash__metric">
                 <span class="si-dash__metric-label">{{ "Driver"|t('super-images') }}</span>
-                <span class="si-dash__metric-value">{{ summary.selectedDriver ?: summary.driver }}</span>
-                <span class="si-dash__metric-meta">{{ "Preference"|t('super-images') }}: {{ summary.driver }}</span>
+                <span class="si-dash__metric-value">{{ summary.selectedDriver ?: '—' }}</span>
+                <span class="si-dash__metric-meta">
+                    {{ "Preference"|t('super-images') }}: {{ summary.driver }}
+                    {% if summary.driverUsable is defined and not summary.driverUsable %}
+                        · {{ "not usable — check Diagnostics"|t('super-images') }}
+                    {% elseif summary.selectedDriver and summary.driver != 'auto' and summary.selectedDriver != summary.driver %}
+                        · {{ "fallback"|t('super-images') }}
+                    {% endif %}
+                </span>
             </div>
             <div class="si-dash__metric">
                 <span class="si-dash__metric-label">{{ "Storage"|t('super-images') }}</span>

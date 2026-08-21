@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unavailable explicit `driver` preference now falls through to the next usable driver instead of failing hard
 - GD / Imagick availability probes are stricter (real usability in the current SAPI, not “extension mentioned”)
 - Playground result meta matches the demo-style pills (dimensions / size / duration) with an open-in-new-tab link instead of a raw storage path
-- Dashboard: `1 profile` grammar; Settings hides “View install hints →” when all required optimizer binaries are available
+- Dashboard health stays **Healthy** on optional warnings; preferred/selected Libvips (or pinned driver) problems are elevated to **fail** so the badge shows **Needs attention**
 
 ### Added
 - `LibvipsCliBridge` + `bin/libvips-worker.php` for safe libvips under FPM
