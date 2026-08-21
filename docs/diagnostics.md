@@ -49,9 +49,11 @@ A binary **not found on PATH** is **WARN**, not pass — even when the format st
 |---|---|
 | Any check `fail` | Needs attention |
 | Queue has failed jobs | Warnings |
-| Warnings only (unused drivers, dual Imagick+Libvips tip, optional optimizers, …) | **Healthy** |
+| Warnings only (unused drivers, dual tip, FPM `ffi.enable` off while `vips` CLI works, optional optimizers, …) | **Healthy** |
 
-**Fail (not warn) when it matters:** preferred `driver => libvips|imagick|gd` is unusable; selected driver is Libvips and FFI / FPM isolation is broken; no driver works at all.
+**Fail when it matters:** preferred `driver => …` is unusable; Libvips is selected/preferred but FPM isolation cannot run (no `vips` binary and no PHP worker); no driver works at all.
+
+`driver => auto` showing **Libvips** on the dashboard is expected — that is the resolved selection, not a pinned preference.
 
 Missing optional optimizers do not block transforms; native driver encoders still produce output.
 

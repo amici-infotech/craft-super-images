@@ -45,12 +45,13 @@ final class LibvipsDriver extends AbstractDriver
     }
 
     /**
-     * Checks whether php-vips can actually load the native libvips shared library.
+     * Checks whether libvips can actually process images in this SAPI.
      *
-     * The Composer package can be present while `libvips.42.dylib` / `libvips.so.42`
-     * is missing from the process library path.
+     * Under FPM isolation the native `vips` binary alone is enough for common
+     * transforms. The PHP worker path additionally requires FFI enabled.
+     * In-process mode requires a successful native library probe.
      *
-     * @return bool True when the binding and native library both load.
+     * @return bool True when this driver is safe to select for generation.
      */
     public function isAvailable(): bool
     {
@@ -58,17 +59,31 @@ final class LibvipsDriver extends AbstractDriver
             return self::$usable;
         }
 
-        if (LibvipsCliBridge::shouldIsolate()) {
-            self::$usable = class_exists(Image::class)
-                && extension_loaded('ffi')
-                && LibvipsCliBridge::isCliAvailable();
-
-            return self::$usable;
+        if (!class_exists(Image::class)) {
+            return self::$usable = false;
         }
 
-        self::$usable = $this->probeNativeLibrary();
+        if (LibvipsCliBridge::shouldIsolate()) {
+            // FPM must not use in-process FFI. Usable when the vips binary or the
+            // PHP worker responds (worker passes -d ffi.enable=true itself).
+            return self::$usable = LibvipsCliBridge::isCliAvailable();
+        }
 
-        return self::$usable;
+        return self::$usable = $this->probeNativeLibrary();
+    }
+
+    /**
+     * Whether FFI is loaded and enabled for php-vips in this process.
+     */
+    private function ffiReady(): bool
+    {
+        if (!extension_loaded('ffi')) {
+            return false;
+        }
+
+        $ffiEnable = strtolower((string) ini_get('ffi.enable'));
+
+        return in_array($ffiEnable, ['1', 'true', 'on', 'yes'], true);
     }
 
     /**
@@ -795,12 +810,7 @@ final class LibvipsDriver extends AbstractDriver
      */
     private function probeNativeLibrary(): bool
     {
-        if (!class_exists(Image::class) || !extension_loaded('ffi')) {
-            return false;
-        }
-
-        $ffiEnable = strtolower((string) ini_get('ffi.enable'));
-        if (!in_array($ffiEnable, ['1', 'true', 'on', 'yes'], true)) {
+        if (!class_exists(Image::class) || !$this->ffiReady()) {
             return false;
         }
 

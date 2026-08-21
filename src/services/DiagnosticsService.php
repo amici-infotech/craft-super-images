@@ -768,28 +768,42 @@ class DiagnosticsService extends Component
     private function libvipsRuntimeChecks(?string $selectedDriver, string $preference): array
     {
         $libvipsInPlay = $preference === 'libvips' || $selectedDriver === 'libvips';
+        $hasVipsBinary = LibvipsCliBridge::resolveVipsBinary() !== null;
 
         $ffiLoaded = extension_loaded('ffi');
         $ffiEnable = strtolower((string) ini_get('ffi.enable'));
         $ffiOn = $ffiLoaded && in_array($ffiEnable, ['1', 'true', 'on', 'yes'], true);
 
+        $isolate = LibvipsCliBridge::shouldIsolate();
+        $cliOk = $isolate ? LibvipsCliBridge::isCliAvailable() : true;
+        $isolationOk = !$isolate || $cliOk;
+
+        // FPM ffi.enable can be off while isolation still works (vips CLI, or PHP
+        // worker started with -d ffi.enable=true). Only fail when Libvips is in
+        // play and isolation itself cannot run.
+        $ffiStatus = 'pass';
+        if (!$ffiOn) {
+            $ffiStatus = ($libvipsInPlay && !$isolationOk) ? 'fail' : 'warn';
+        }
+
         $checks = [];
         $checks[] = $this->check(
             'ffi',
             self::GROUP_DRIVERS,
-            $ffiOn ? 'pass' : ($libvipsInPlay ? 'fail' : 'warn'),
+            $ffiStatus,
             'FFI (libvips)',
             $ffiLoaded
                 ? 'extension loaded · ffi.enable=' . ($ffiEnable !== '' ? $ffiEnable : 'off')
-                : 'FFI extension not loaded.',
+                    . ($hasVipsBinary && !$ffiOn ? ' · vips CLI available' : '')
+                : 'FFI extension not loaded.'
+                    . ($hasVipsBinary ? ' · vips CLI available' : ''),
             $ffiOn
-                ? 'Required for php-vips. Keep zend.max_allowed_stack_size=-1 on PHP 8.3+.'
-                : 'Set ffi.enable=true in the FPM php.ini (install php8.x-ffi if needed), then restart PHP-FPM. See docs/drivers.md.',
+                ? 'Required for in-process php-vips (CLI SAPI). Keep zend.max_allowed_stack_size=-1 on PHP 8.3+.'
+                : ($isolationOk && $isolate
+                    ? 'FPM ffi.enable is off, but isolation can still run via vips CLI / PHP worker. Enable ffi.enable=true for in-process use.'
+                    : 'Set ffi.enable=true in the FPM php.ini (install php8.x-ffi if needed), then restart PHP-FPM. See docs/drivers.md.'),
         );
 
-        $isolate = LibvipsCliBridge::shouldIsolate();
-        $cliOk = $isolate ? LibvipsCliBridge::isCliAvailable() : true;
-        $isolationOk = !$isolate || $cliOk;
         $checks[] = $this->check(
             'libvips-isolation',
             self::GROUP_DRIVERS,
@@ -801,7 +815,7 @@ class DiagnosticsService extends Component
                     : 'Needed for SAPI ' . PHP_SAPI . ' but neither vips binary nor PHP CLI worker responded.')
                 : 'Not required for SAPI ' . PHP_SAPI . ' (in-process libvips OK).',
             !$isolationOk
-                ? 'Install libvips-tools / brew install vips, or set SUPER_IMAGES_VIPS_BINARY / SUPER_IMAGES_PHP_BINARY. See docs/drivers.md.'
+                ? 'Install libvips-tools (`sudo apt-get install -y libvips-tools`), or set SUPER_IMAGES_VIPS_BINARY / SUPER_IMAGES_PHP_BINARY. See docs/drivers.md.'
                 : ($isolate
                     ? 'Isolation avoids FFI SIGSEGV under FPM. Override with SUPER_IMAGES_VIPS_ISOLATE=0 only for debugging.'
                     : null),
